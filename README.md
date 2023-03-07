@@ -5,6 +5,7 @@
 - `$HOME/tdpp` 경로에 tdpp 폴더를 위치시킵니다.
 - `$HOME/tdpp/image/megatron-latest.sqsh` 경로에 `megatron-latest.sqsh` 파일을 위치시킵니다.
 - `$HOME/tdpp/Megatron-LM-2/log2` 경로에 `log2` 폴더를 생성합니다.
+- `$HOME/tdpp/Megatron-LM-2/log` 경로에 `log` 폴더를 생성합니다.
 
 
 ## II. run
@@ -28,14 +29,19 @@ sbatch.sh 파일과 run_inter.sh 파일을 수정한 후 sbatch 커맨드를 통
 - `$HOME/tdpp/Megatron-LM-2/run-inter.sh` 파일을 적절히 수정합니다.
     ```bash
     #!/bin/bash
-    #SBATCH --nodes=4
-    #SBATCH --ntasks-per-node=1
-    #SBATCH --partition=gpu2
-    #SBATCH --nodelist=n063,n064,n065,n066
-    #SBATCH --gres=gpu:a10:4,gpu:a10:4,gpu:a10:4,gpu:a10:4
-    #SBATCH --cpus-per-task=28
-    #SBATCH -o ./log2/%j.sbatch.%N.out         # STDOUT
-    #SBATCH -e ./log2/%j.sbatch.%N.err         # STDERR
+    NODE_RANK=$1
+    MASTER_ADDR=$2
+    NPROC_PER_NODE=4
+    NNODES=4
+    WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
+
+    MICRO_BATCH_DIM=1
+    TENSOR_MP_SIZE=1
+    PIPELINE_MP_SIZE=4
+    DP_SIZE=$((WORLD_SIZE/PIPELINE_MP_SIZE/TENSOR_MP_SIZE))
+
+    GLOBAL_BATCH_SIZE=$((32*MICRO_BATCH_DIM))
+    MICRO_BATCH_SIZE=$((GLOBAL_BATCH_SIZE/DP_SIZE/MICRO_BATCH_DIM/PIPELINE_MP_SIZE))
     ```
 
 - `sbatch`
