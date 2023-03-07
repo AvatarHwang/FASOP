@@ -37,7 +37,7 @@ for (( index = 0; index < length; index++ )); do
     fi
 done 
 
-gpustat -i > \$HOME/tdpp/Megatron-LM-2/log2/\$SLURM_JOB_ID/\$hostnode-gpu.log &
+/usr/local/bin/gpustat -i > \$HOME/tdpp/Megatron-LM-2/log2/\$SLURM_JOB_ID/\$hostnode.gpu &
 
 enroot start --root \
             --rw \
