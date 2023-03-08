@@ -2,7 +2,7 @@
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu2
-#SBATCH --nodelist=n063,n064,n065,n066
+#SBATCH --nodelist=n064,n065,n066,n067
 #SBATCH --gres=gpu:a10:4,gpu:a10:4,gpu:a10:4,gpu:a10:4
 #SBATCH --cpus-per-task=28
 #SBATCH -o ./log2/%j.sbatch.%N.out         # STDOUT
