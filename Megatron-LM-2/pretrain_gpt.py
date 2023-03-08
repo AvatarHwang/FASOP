@@ -111,6 +111,7 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
 if __name__ == "__main__":
 
+    #"""
     pretrain(train_valid_test_datasets_provider, model_provider,
             ModelType.encoder_or_decoder,
             forward_step,
@@ -122,15 +123,16 @@ if __name__ == "__main__":
             torch.profiler.ProfilerActivity.CPU,
             torch.profiler.ProfilerActivity.CUDA
         ],
-        schedule=torch.profiler.schedule(wait=0, warmup=0, active=1),
+        schedule=torch.profiler.schedule(wait=0, warmup=4, active=1),
         on_trace_ready=torch.profiler.tensorboard_trace_handler('./log'),
         with_stack=True,
         with_flops=True
         ) as p:
-            for _ in range(1):
+            for _ in range(5):
                 pretrain(train_valid_test_datasets_provider, model_provider,
                         ModelType.encoder_or_decoder,
                         forward_step,
                         args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
                 p.step()
     """
+    

@@ -8,7 +8,7 @@ WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
 
 MICRO_BATCH_DIM=1
 TENSOR_MP_SIZE=1
-PIPELINE_MP_SIZE=4
+PIPELINE_MP_SIZE=16
 DP_SIZE=$((WORLD_SIZE/PIPELINE_MP_SIZE/TENSOR_MP_SIZE))
 
 GLOBAL_BATCH_SIZE=$((32*MICRO_BATCH_DIM))
@@ -43,7 +43,7 @@ MODEL_ARGS="--num-layers 48 \
         --merge-file $MERGE_FILE \
         --lr-warmup-fraction .01 \
         --fp16 \
-        --balance 12-12-12-12" 
+        --balance 3-3-3-3-3-3-3-3-3-3-3-3-3-3-3-3" 
 
 OUTPUT_ARGS="--log-interval 10 \
              --save-interval 100 \
