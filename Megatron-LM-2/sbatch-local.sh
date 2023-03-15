@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --nodes=4
+#SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --partition=gpu2
-#SBATCH --nodelist=n067,n068,n071,n064
-#SBATCH --gres=gpu:a10:4,gpu:a10:4,gpu:a10:4,gpu:a10:4
-#SBATCH --cpus-per-task=56
+#SBATCH --partition=gpu1
+#SBATCH --nodelist=n010
+#SBATCH --gres=gpu:rtx3090:4
+#SBATCH --cpus-per-task=48
 #SBATCH -o ./log2/%j.sbatch.%N.out         # STDOUT
 #SBATCH -e ./log2/%j.sbatch.%N.err         # STDERR
 
@@ -48,8 +48,8 @@ EOF
 
 
 srun --partition=$SLURM_JOB_PARTITION \
-      --gres=gpu:a10:4 \
-      --cpus-per-task=56 \
+      --gres=gpu:rtx3090:4 \
+      --cpus-per-task=48 \
       -o ./log2/%j/%N.out \
       -e ./log2/%j/%N.err \
       bash -c "$ENROOT_SCRIPT $MASTER_ADDR\" " 

@@ -1,27 +1,26 @@
 #!/bin/bash
 
 NODE_RANK=$1
-MASTER_ADDR=$2
+MASTER_ADDR=192.168.120.74
 NPROC_PER_NODE=4
 NNODES=4
 WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
-MICRO_BATCH_DIM=1
-TENSOR_MP_SIZE=1
-PIPELINE_MP_SIZE=16
-DP_SIZE=$((WORLD_SIZE/PIPELINE_MP_SIZE/TENSOR_MP_SIZE))
+GLOBAL_BATCH_SIZE=32
+
+MICRO_BATCH_DIM=16
+MICRO_BATCH_SIZE=2
+TENSOR_MP_SIZE=2
+DP_SIZE=1
 PIPELINE_MP_SIZE=8
-BALANCE='10-13-13-12'
-GLOBAL_BATCH_SIZE=$((32*MICRO_BATCH_DIM))
-MICRO_BATCH_SIZE=$((GLOBAL_BATCH_SIZE/DP_SIZE/MICRO_BATCH_DIM/PIPELINE_MP_SIZE))
 
 echo "NODE_RANK: $NODE_RANK"
 echo "MICRO_BATCH_DIM: $MICRO_BATCH_DIM"
 echo "TENSOR_MP_SIZE: $TENSOR_MP_SIZE"
-echo "MASTER_ADDR: $MASTER_ADDR"
 echo "PIPELINE_MP_SIZE: $PIPELINE_MP_SIZE"
-echo "BALANCE: $BALANCE"
 echo "MICRO_BATCH_SIZE: $MICRO_BATCH_SIZE"
 echo "GLOBAL_BATCH_SIZE*MICRO_BATCH_DIM: $GLOBAL_BATCH_SIZE"
+
+
 
 DISTRIBUTED_ARGS="--nproc_per_node $NPROC_PER_NODE \
                   --nnodes $NNODES \
@@ -47,7 +46,7 @@ MODEL_ARGS="--num-layers 48 \
         --merge-file $MERGE_FILE \
         --lr-warmup-fraction .01 \
         --fp16 \
-        --balance 3-3-3-3-3-3-3-3-3-3-3-3-3-3-3-3" 
+        --balance 6-6-6-7-6-6-6-5" 
 
 OUTPUT_ARGS="--log-interval 10 \
              --save-interval 100 \
@@ -66,4 +65,4 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_gpt.py \
                 --DDP-impl local \
                 --no-async-tensor-model-parallel-allreduce \
                 --no-gradient-accumulation-fusion \
-                --split 100,0,0
+                --split 100,0,0 
