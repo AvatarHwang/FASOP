@@ -109,6 +109,10 @@ tensorboard --logdir=./log/temp --bind_all
 두번째로는 TP comm.시간과 DP comm.시간을 확인합니다. 확인은 trace에서 가능합니다.
 자세한 방법은 문의하세요.
 
+
 ## V. Profile layer by layer execution time
 
-작성예정
+레이어별 연산시간 프로파일링은 AMP의 재료로 사용하기 위해 필요합니다.
+1. 먼저 `Megatron-LM-2/megatron/` 경로로 이동합니다.
+2. 기존 training.py를 삭제하고 training-profile_LBL.py를 training.py로 변경합니다.
+3. 메가트론을 실행합니다. 실행 파일은 `LayerByLayer_profile.sh` 입니다. 연산시간은 마스터노드에서 리스트 형태로 출력됩니다.
