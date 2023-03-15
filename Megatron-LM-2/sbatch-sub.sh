@@ -2,7 +2,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu1
-#SBATCH --nodelist=n009
+#SBATCH --nodelist=n010
 #SBATCH --gres=gpu:rtx3090:4
 #SBATCH --cpus-per-task=28
 #SBATCH -o ./log2/%j.sbatch.%N.out         # STDOUT
