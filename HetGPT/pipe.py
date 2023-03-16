@@ -57,7 +57,6 @@ def pipe_ast(L, cost_e, cost_c, k, B):
     S, cost = trace[L-1][k-1][0]
     cost += np.sum(cost_e)
     print(f"pipe_ast used {round(time_dp_used,2)} seconds with {L} layers and {k} stages.")
-    print("S: ", S)
     return (S, cost)
 
 def pipe_ds(L, cost_e, cost_c, k, B):
@@ -105,28 +104,6 @@ def pipe_uniform(L, pp):
     # print(f"pipe uniform returns {ret}")
     # print(f"-----------{ret}. {L}, {pp}")
     return ret, None
-
-def pipe_transgan(cost_e, pp):
-    # buggy
-    assert False
-    each = np.sum(cost_e) // pp
-    assignment = []
-    cumulative_time = 0
-    cumulative_length = 0
-    print(cost_e)
-    print(each)
-    for i in range(len(cost_e)):
-        cumulative_time += cost_e[i]
-        cumulative_length += 1
-        if cumulative_time >= each:
-            assignment.append(cumulative_length)
-            cumulative_time = 0
-            cumulative_length = 0
-        print(cumulative_time, cumulative_length)
-    #remain = 
-    if cumulative_length != 0:
-        assignment.append(cumulative_length)
-    return assignment, None
 
 def pipe_cost(L, cost_e, cost_c, k, B, partition):
     s = partition

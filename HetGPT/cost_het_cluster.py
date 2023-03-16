@@ -326,10 +326,8 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
         
     cost_e = get_cost_e(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
-    print(f"cost_e: {cost_e}")
     cost_c = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
-    print(f"cost_c: {cost_c}")
         
     if int(B.item()) == 1:
         partition, _ = pipe_uniform(int(L.item()), int(pp.item()))
@@ -352,33 +350,73 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
        
     cost = pipecost + dp_side_cost
 
-    EstimatePeakMemory(partition, model_config, parallel_config, amp_config)
+    oom_flag = EstimatePeakMemory(partition, model_config, parallel_config)
 
     return rank_map, ds_partition, cost, pipecost, dp_side_cost
     
-def EstimatePeakMemory(partition, model_config, parallel_config, amp_config):
 
-    # estimate model size
-    num_layer = model_config["num_layers"]
+def EstimatePeakMemory(partition, model_config, parallel_config):
     hidden_size = model_config["hidden_size"]
     v = model_config["vocab_size"]
     tp_degree = parallel_config["mp"]
-    n = parallel_config["dp"]
-    pp = parallel_config["pp"]
     mbs = parallel_config["micro_bs"]
-    gbs = mbs * n * tp_degree
-    dp_const = amp_config["dp_const"]
-    mp_const = amp_config["mp_const"]
-    pp_const = amp_config["pp_const"]
+
     param_count = 0
     counted = False
-    for i in range(num_layer):
-        layer_type = model_config["layer_type"][i]
-        if layer_type == "embed2h" or "embed2v":
-            if not counted:
-                counted = True
-                param_count += hidden_size * v / tp_degree
-        elif layer_type == "transformer_layer":
-            param_count += 12 * hidden_size ** 2 / tp_degree
-        elif layer_type == "noop":
-            pass
+    max_param_count = 0
+
+    # estimate model size
+    for stage in partition:
+        max_stage_num=0
+        for i in range(len(stage)):
+            layer_type = model_config["layer_type"][i]
+            if layer_type == "embed2h" or "embed2v":
+                if not counted:
+                    counted = True
+                    param_count += hidden_size * v / tp_degree
+            elif layer_type == "transformer_layer":
+                param_count += 12 * hidden_size ** 2 / tp_degree
+            elif layer_type == "noop":
+                pass
+            if max_param_count < param_count:
+                max_param_count = param_count
+                max_stage_num = i
+    max_model_memory = max_param_count * 16 / 1024 / 1024 / 1024
+    # estimate activation size
+    activation_memory = []
+    for stage in partition:
+        avtivation = 0
+        for i in range(len(stage)):
+            layer_type = model_config["layer_type"][i]
+            if layer_type == "embed2h" or "embed2v":
+                avtivation += hidden_size * mbs / tp_degree
+            elif layer_type == "transformer_layer":
+                avtivation += 12 * hidden_size * mbs / tp_degree
+            elif layer_type == "noop":
+                pass
+            activation_memory.append(avtivation * 16 / 1024 / 1024 / 1024)
+    # estimate pipeline buffer size
+    pipeline_buffer_memory = []
+    for stage in partition:
+        pipeline_buffer = 0
+        for i in range(len(stage)):
+            layer_type = model_config["layer_type"][i]
+            if layer_type == "embed2h" or "embed2v":
+                pipeline_buffer += hidden_size * mbs / tp_degree
+            elif layer_type == "transformer_layer":
+                pipeline_buffer += 12 * hidden_size * mbs / tp_degree
+            elif layer_type == "noop":
+                pass
+            pipeline_buffer_memory.append(pipeline_buffer * 16 / 1024 / 1024 / 1024)
+    # get peak memory
+    peak_memory = max(max_model_memory, activation_memory[max_stage_num], pipeline_buffer_memory[max_stage_num])
+
+    gpu_memory = 24
+    if peak_memory > gpu_memory:
+        print("peak memory is larger than gpu memory")
+        return False
+    else:
+        print("peak memory is smaller than gpu memory")
+        return True
+
+            

@@ -44,7 +44,7 @@ gpu_per_node = args.gpu_per_node
 num_node = args.num_node
 
 home_path = os.environ['HOME']
-dir_path = os.path.join(home_path, '/tdpp/HetGPT/main_logs')
+dir_path = os.path.join(home_path, 'tdpp/HetGPT/main_logs')
 if not os.path.exists(dir_path):
     os.mkdir(dir_path)
 
