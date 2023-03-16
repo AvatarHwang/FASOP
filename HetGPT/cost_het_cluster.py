@@ -123,7 +123,7 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
                 cost_c[i][k][j] = layer_volume[k]  / slowest_bandwidth
             
     cost_c = torch.mean(cost_c, dim=0)
-    return cost_c
+    return cost_c, _layer
 
 # execution cost for one layer, return shape (L,)
 def get_cost_e(cluster_info, model_config, parallel_config, amp_config):    
@@ -326,7 +326,7 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
         
     cost_e = get_cost_e(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
-    cost_c = get_cost_c(cluster_info=cluster_info, 
+    cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
         
     if int(B.item()) == 1:
@@ -350,73 +350,55 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
        
     cost = pipecost + dp_side_cost
 
-    oom_flag = EstimatePeakMemory(partition, model_config, parallel_config)
+    oom_flag = EstimatePeakMemory(partition, model_config, parallel_config, layer_type)
 
     return rank_map, ds_partition, cost, pipecost, dp_side_cost
     
 
-def EstimatePeakMemory(partition, model_config, parallel_config):
+def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
     hidden_size = model_config["hidden_size"]
     v = model_config["vocab_size"]
     tp_degree = parallel_config["mp"]
     mbs = parallel_config["micro_bs"]
-
-    param_count = 0
-    counted = False
-    max_param_count = 0
-
-    # estimate model size
-    for stage in partition:
-        max_stage_num=0
-        for i in range(len(stage)):
-            layer_type = model_config["layer_type"][i]
-            if layer_type == "embed2h" or "embed2v":
-                if not counted:
-                    counted = True
-                    param_count += hidden_size * v / tp_degree
-            elif layer_type == "transformer_layer":
-                param_count += 12 * hidden_size ** 2 / tp_degree
-            elif layer_type == "noop":
-                pass
-            if max_param_count < param_count:
-                max_param_count = param_count
-                max_stage_num = i
-    max_model_memory = max_param_count * 16 / 1024 / 1024 / 1024
-    # estimate activation size
+    param_count = []
     activation_memory = []
-    for stage in partition:
-        avtivation = 0
-        for i in range(len(stage)):
-            layer_type = model_config["layer_type"][i]
-            if layer_type == "embed2h" or "embed2v":
-                avtivation += hidden_size * mbs / tp_degree
-            elif layer_type == "transformer_layer":
-                avtivation += 12 * hidden_size * mbs / tp_degree
-            elif layer_type == "noop":
-                pass
-            activation_memory.append(avtivation * 16 / 1024 / 1024 / 1024)
-    # estimate pipeline buffer size
     pipeline_buffer_memory = []
+    layer_index = 0
+
     for stage in partition:
+        param=0
+        avtivation = 0
         pipeline_buffer = 0
-        for i in range(len(stage)):
-            layer_type = model_config["layer_type"][i]
-            if layer_type == "embed2h" or "embed2v":
+        for i in range(stage):
+            if layer_type[i] == "embed2h" or "embed2v":
+                param += hidden_size * v / tp_degree
+                avtivation += hidden_size * mbs / tp_degree
                 pipeline_buffer += hidden_size * mbs / tp_degree
-            elif layer_type == "transformer_layer":
+            elif layer_type[i] == "transformer_layer":
+                param += 12 * hidden_size ** 2 / tp_degree
+                avtivation += 12 * hidden_size * mbs / tp_degree
                 pipeline_buffer += 12 * hidden_size * mbs / tp_degree
-            elif layer_type == "noop":
+            elif layer_type[i] == "noop":
                 pass
-            pipeline_buffer_memory.append(pipeline_buffer * 16 / 1024 / 1024 / 1024)
+            layer_index += 1
+        param_count.append(param * 16 / 1024 / 1024 / 1024)
+        activation_memory.append(avtivation * 16 / 1024 / 1024 / 1024)
+        pipeline_buffer_memory.append(pipeline_buffer * 16 / 1024 / 1024 / 1024)
+
     # get peak memory
-    peak_memory = max(max_model_memory, activation_memory[max_stage_num], pipeline_buffer_memory[max_stage_num])
+    peak_memory = []
+    for i in range(len(partition)):
+        peak_memory.append(param_count[i] + activation_memory[i] + pipeline_buffer_memory[i])
+    peak_memory = max(peak_memory)
 
     gpu_memory = 24
     if peak_memory > gpu_memory:
         print("peak memory is larger than gpu memory")
+        print(f"peak memory is {peak_memory} GB")
         return False
     else:
         print("peak memory is smaller than gpu memory")
+        print(f"peak memory is {peak_memory} GB")
         return True
 
             

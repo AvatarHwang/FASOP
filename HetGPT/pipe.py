@@ -4,6 +4,8 @@ import time
 import torch
 import numpy as np
 
+from amp_utils import rank2axis, axis2rank, get_host
+
 def pipe_ast(L, cost_e, cost_c, k, B):
     time_dp_s = time.time()
     possible = [0]
@@ -122,3 +124,79 @@ def pipe_cost(L, cost_e, cost_c, k, B, partition):
         cost += cost_c[p[i]][i]
     cost += torch.sum(cost_e)
     return cost
+
+def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, partition):
+    h = model_config["hidden_size"]
+    s = model_config["sequence_length"]
+    n = model_config["num_layers"]
+    v = model_config["vocab_size"]
+    bs = parallel_config["micro_bs"]
+    rank_map = parallel_config["rank_map"]
+    rank_node_map = parallel_config["rank_node_map"]
+    mp = parallel_config["mp"]
+    dp = parallel_config["dp"]
+    pp = parallel_config["pp"]
+    
+    _layer = ["embed2h"]
+    #_layer = ["embed2h", "noop"]
+    for i in range(int(n.item())):
+        _layer.append("transformer_layer")
+    
+    _layer.extend(["noop"])
+    #_layer.extend(["noop","noop", "embed2v", "noop"])
+    _num_layer = len(_layer)
+        
+    # First translate to deepspeed partition form
+    ds_partition = [0]
+    print(f"partition: {partition}")
+    for i in range(len(partition)):
+        ds_partition.append(ds_partition[-1]+partition[i])
+    print(ds_partition, _num_layer)
+    assert ds_partition[-1] == _num_layer
+    assert len(ds_partition) == pp + 1
+                
+    # should be per-dp_group time
+    max_dp = torch.zeros(1,)
+    for i in range(int(pp.item())):
+        for j in range(int(mp.item())):
+            
+            slowest = float("inf")
+            for k in range(int(dp.item())):
+                rank_cur = axis2rank(axis=(i,k,j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
+                node_cur = rank_node_map[int(rank_cur.item())]
+                    
+                    
+                rank_next = axis2rank(axis=(i,(k+1)%(dp.item()),j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
+                node_next = rank_node_map[int(rank_next.item())]
+                    
+                    
+                if node_cur == node_next:
+                    connectivity = cluster_info[node_cur][1]
+                else:
+                    connectivity = min(cluster_info[node_cur][0], cluster_info[node_next][0])
+                        
+            slowest = min(slowest, connectivity)
+            dp_const = 2 * (dp-1) / (dp * slowest)
+            dp_const = torch.tensor([dp_const])
+                
+            param_count = torch.zeros(1,)
+            counted = False
+            for layer_id in range(ds_partition[i], ds_partition[i+1]):
+                layer_type = _layer[layer_id]
+                if layer_type == "embed2h" or layer_type == "embed2v":
+                    if not counted:
+                        counted = True
+                        param_count += h * v / mp
+                elif layer_type == "transformer_layer":
+                    param_count += 12 * h ** 2 / mp
+                elif layer_type == "noop":
+                    pass
+                else:
+                    raise RuntimeError("Unknown layer type.")
+                        
+            #print(f"dp: {dp_const} and param {param_count}")
+            cur_dp = dp_const * param_count
+            if cur_dp > max_dp:
+                max_dp = cur_dp
+                
+    return ds_partition, max_dp
