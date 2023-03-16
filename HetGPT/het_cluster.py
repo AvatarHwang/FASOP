@@ -18,25 +18,33 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from sa import amp_no_placement_strategy
-from cost_het_cluster import AMP
+from cost_het_cluster import HetGPT
 from amp_utils import simulate, to_float_torch
 
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--full", action="store_true", help="Whether to run real trials")
-parser.add_argument("--budget", type=int, default=-1, help="how many real trials to launch")
-
+parser.add_argument("--gbs", type=int, default=32)
+parser.add_argument("--exp_name", type=str, default="het_cluster")
+parser.add_argument("--model_config", type=str, default="gpt2XL")
+parser.add_argument("--hidden_size", type=int, default=1600)
+parser.add_argument("--sequence_length", type=int, default=2048)
+parser.add_argument("--num_layers", type=int, default=48)
+parser.add_argument("--vocab_size", type=int, default=51200)
+parser.add_argument("--type", type=str, default="gpt2XL")
+parser.add_argument("--gpu_per_node", type=int, default=4)
+parser.add_argument("--num_node", type=int, default=4)
 args = parser.parse_args()
+
 # cluster information
 
 time_s = time.time()
 # number of GPU per node, number of nodes
-M = 4
-N = 4
+gpu_per_node = args.gpu_per_node
+num_node = args.num_node
 
 home_path = os.environ['HOME']
-dir_path = os.path.join(home_path, 'amp_main_logs')
+dir_path = os.path.join(home_path, '/tdpp/HetGPT/main_logs')
 if not os.path.exists(dir_path):
     os.mkdir(dir_path)
 
@@ -48,11 +56,11 @@ cluster_info[1] = [torch.tensor([40 * 1e9 / 32]).float(), torch.tensor([252 * 1e
 cluster_info[2] = [torch.tensor([40 * 1e9 / 32]).float(), torch.tensor([126 * 1e9 / 32]).float()]
 cluster_info[3] = [torch.tensor([40 * 1e9 / 32]).float(), torch.tensor([126 * 1e9 / 32]).float()]
 
-model_config = {"hidden_size": torch.tensor([1600]).float(), 
+model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
                 "sequence_length": torch.tensor([2048]).float(), 
                 "num_layers": torch.tensor([48]).float(), 
                 "vocab_size":torch.tensor([51200]).float(),
-                "type":"gpt2XL"}
+                "type":args.type}
 
 config_h = int((model_config["hidden_size"]).item())
 config_n = int(model_config["num_layers"].item())
@@ -72,9 +80,9 @@ if os.path.exists(os.path.join(home_path, "tmp")):
 # save this name to env
 os.environ["amp_log_path"] = record_file
 
-global_bs = 32
-model = AMP(model_config, exp_name)
-assert (global_bs % M == 0) and (global_bs % N == 0), "global batch size is too irrgular"
+global_bs = int(args.gbs)
+model = HetGPT(model_config, exp_name)
+assert (global_bs % gpu_per_node == 0) and (global_bs % num_node == 0), "global batch size is too irrgular"
 
 want_simulate = [] 
 feasible = {}
@@ -87,13 +95,13 @@ iter_count = 0
 
 # Estimating best configurations
 while True:
-    ret = amp_no_placement_strategy(M=M, N=N, gbs=global_bs, known=known)
+    ret = amp_no_placement_strategy(M=gpu_per_node, N=num_node, gbs=global_bs, known=known)
     if ret is None:
         break
     else:
         h, w, mbs, known = ret
-        oth = {"mp_deg": torch.ones(1,)*h, "dp_deg": torch.ones(1,)*w, "pp_deg": torch.ones(1,)*(M*N/(h*w))}
-        fake_config = np.ones((M,N)) * (-1)
+        oth = {"mp_deg": torch.ones(1,)*h, "dp_deg": torch.ones(1,)*w, "pp_deg": torch.ones(1,)*(gpu_per_node*num_node/(h*w))}
+        fake_config = np.ones((gpu_per_node,num_node)) * (-1)
         model_args = (fake_config, global_bs, mbs, cluster_info, model_config, oth)    
         
         with torch.no_grad():
@@ -111,22 +119,3 @@ with open(record_file, "a") as fp:
     for item in sorted_settings:
         fp.write(f"rank {sorted_settings.index(item)}: {item}")
         fp.write("\n")
-
-# Run real trials to get ground truth runtime
-if args.full:
-    if args.budget == -1:
-        budget = len(sorted_settings)
-    else:
-        budget = args.budget
-    simulate_start = time.time()
-    for i in range(budget):
-        can = sorted_settings[i][0]
-        rmap = None
-        mbs = can[0]
-        oth = can[1]
-        partition = can[3]
-        gt_cost = simulate([rmap], [partition], torch.ones(1,)*global_bs, to_float_torch([mbs]), model_config, [oth], exp_name)
-        gt_cost = gt_cost[0]
-        with open(record_file, "a") as fp:
-            fp.write(f"Simulating result: {rmap}, {partition}, {mbs}, {oth}, with p_cost: {sorted_settings[i][1]}, r_cost: {gt_cost} \n")
-            fp.write(f"running real trials till iter {i} takes {time.time() - time_s} \n")

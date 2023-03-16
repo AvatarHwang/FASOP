@@ -57,6 +57,7 @@ def pipe_ast(L, cost_e, cost_c, k, B):
     S, cost = trace[L-1][k-1][0]
     cost += np.sum(cost_e)
     print(f"pipe_ast used {round(time_dp_used,2)} seconds with {L} layers and {k} stages.")
+    print("S: ", S)
     return (S, cost)
 
 def pipe_ds(L, cost_e, cost_c, k, B):
