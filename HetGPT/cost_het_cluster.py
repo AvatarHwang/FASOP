@@ -373,11 +373,11 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
             if layer_type[i] == "embed2h" or "embed2v":
                 param += hidden_size * v / tp_degree
                 avtivation += hidden_size * mbs / tp_degree
-                pipeline_buffer += hidden_size * mbs / tp_degree
             elif layer_type[i] == "transformer_layer":
                 param += 12 * hidden_size ** 2 / tp_degree
                 avtivation += 12 * hidden_size * mbs / tp_degree
-                pipeline_buffer += 12 * hidden_size * mbs / tp_degree
+                if i == 0:
+                    pipeline_buffer += 12 * hidden_size * mbs / tp_degree
             elif layer_type[i] == "noop":
                 pass
             layer_index += 1
