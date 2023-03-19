@@ -10,7 +10,6 @@
 
 #************************************************************
 GRES="gpu:a10:4"
-START_RANK=0
 #************************************************************
 
 cd $HOME/tdpp/Megatron-LM-2
@@ -33,7 +32,7 @@ NODE_LIST=\`scontrol show hostnames \$SLURM_JOB_NODELIST\`
 node_array=(\$NODE_LIST)
 length=\${#node_array[@]}
 hostnode=\`hostname -s\`
-for (( index = $START_RANK; index < length + $START_RANK ; index++ )); do
+for (( index = 0; index < length ; index++ )); do
     node=\${node_array[\$index]}
     if [ \$node == \$hostnode ]; then
         local_rank=\$index
