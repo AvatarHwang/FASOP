@@ -12,6 +12,7 @@ MICRO_BATCH_SIZE=2
 TENSOR_MP_SIZE=2
 DP_SIZE=1
 PIPELINE_MP_SIZE=8
+BALANCE="6-6-6-7-6-6-6-5"
 
 echo "NODE_RANK: $NODE_RANK"
 echo "MASTER_ADDR: $MASTER_ADDR"
@@ -47,7 +48,7 @@ MODEL_ARGS="--num-layers 48 \
         --merge-file $MERGE_FILE \
         --lr-warmup-fraction .01 \
         --fp16 \
-        --balance 6-6-6-7-6-6-6-5" 
+        --balance $BALANCE" 
 
 OUTPUT_ARGS="--log-interval 10 \
              --save-interval 100 \

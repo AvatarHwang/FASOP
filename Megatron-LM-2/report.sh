@@ -7,7 +7,7 @@ if [ $type == "out" ]; then
 elif [ $type == "err" ]; then
     watch -n 1 "tail -n 8 ./log2/$jobid/*.$type"
 elif [ $type == "gpu" ]; then
-    watch -n 1 "tail -n 8 ./log2/$jobid/*.$type"
+    watch -n 1 "tail -n 5 ./log2/$jobid/*.$type"
 else
     echo "type error"
 fi
