@@ -6,96 +6,68 @@ import numpy as np
 
 from amp_utils import rank2axis, axis2rank, get_host
 
-def pipe_ast(L, cost_e, cost_c, k, B):
-    time_dp_s = time.time()
-    possible = [0]
-    
-    for i in range(1, L+1):
-        ptr = 0
-        while ptr + i <= L:
-            possible.append(sum(cost_e[ptr:ptr+i]))
-            ptr += 1
-    
-    possible = sorted(list(set(possible)))
-    trace = []
-    for i in range(L):
-        outer = []
-        for j in range(k):
-            inner = []
-            for m in range(len(possible)):
-                inner.append(([],np.infty))
-            outer.append(inner)
-        trace.append(outer)
-    
-    for i in range(L):
-        for j in range(k):
-            for m in range(len(possible)):
-                if i+1 <= j: # invalid
-                    pass
-                else:
-                    if j == 0: # base case: 0 cut
-                        cur_sum = sum(cost_e[:i+1])
-                        assert cur_sum in possible
-                        trace[i][j][m] = ([i+1], (B-1) * max(0, cur_sum - possible[m]))
+def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node):
+    time_s = time.time()
+
+    pp_per_node = pp_degree // num_node
+    num_balanced_layer = num_layer // pp_degree
+    partition = []
+    max_latency = 1000000
+    last_max_latency = 1000000
+    for i in range(pp_degree):
+        partition.append(num_balanced_layer)
+    print("partition", partition)
+
+    while(1):
+        if pp_degree>=4:
+            stage_latency = []
+            for i in range(pp_degree):
+                if i < pp_per_node:
+                    if i == 0:
+                        stage_latency.append(np.sum(cost_e1[:partition[i]]))
                     else:
-                        cost_best = np.infty
-                        S_best = []
-                        for cut in range(j-1, i):
-                            cur_sum = sum(cost_e[cut+1:i+1])
-                            assert cur_sum in possible
-                            S, cost_ = trace[cut][j-1][possible.index(max(cur_sum, possible[m]))]
-                            cost_ += (B-1) * max(0, cur_sum - possible[m])
-                            cost_ += cost_c[cut][j-1]
-                            if cost_ < cost_best:
-                                cost_best = cost_ - cost_c[cut][j-1]
-                                S_ = copy.deepcopy(S)
-                                S_.append(i-cut)
-                                S_best = S_
-                        trace[i][j][m] = (S_best, cost_best)
-                        
-    time_dp_used = time.time() - time_dp_s
-    
-    # add each stage cost at the end 
-    S, cost = trace[L-1][k-1][0]
-    cost += np.sum(cost_e)
-    print(f"pipe_ast used {round(time_dp_used,2)} seconds with {L} layers and {k} stages.")
-    return (S, cost)
+                        stage_latency.append(np.sum(cost_e1[sum(partition[:i-1]):sum(partition[:i+1])] \
+                        + cost_c[sum(partition[:i])][i-1]))
+                else:
+                    stage_latency.append(np.sum(cost_e2[sum(partition[:i-1]):sum(partition[:i+1])] \
+                    + cost_c[sum(partition[:i])][i-1]))
+            
+            # get index of max and value
+            temp_max_latency = max(stage_latency)
+            print("stage_latency", stage_latency)
 
-def pipe_ds(L, cost_e, cost_c, k, B):
-    per_stage = L // k
-    s = [int(per_stage.item())] * (int(k.item())-1)
-    s.append(int(L.item())-sum(s))
-    p = [s[0]-1]
-    
-    for i in range(1, int(k.item())):
-        p.append(p[i-1] + s[i])
-    lens = torch.reshape(torch.sum(cost_e[:p[0]+1]), (-1,1))
-    
-    for i in range(len(s)-1):
-        lens = torch.cat([lens,torch.reshape(torch.sum(cost_e[p[i]+1:p[i+1]+1]), (-1,1))])
-        
-    max_l = torch.max(lens)
-    cost = (B-1) * max_l
-    for i in range(int(k.item())-1):
-        cost += cost_c[p[i]][i]
-    cost += torch.sum(cost_e)
-    return s, cost
+            if temp_max_latency <= max_latency:
+                max_latency = temp_max_latency
+                print("max_latency", max_latency)
+                print("last_max_latency", last_max_latency)
+                last_max_latency = temp_max_latency
+                max_latency_index = stage_latency.index(max_latency)
 
-def pipe_gpt2(L, pp):
-    each = L // pp
-    remain = L - pp * each
-    start = 2
-    ret = [start + each]
-    for i in range(pp-1):
-        ret.append(each)
-    for i in range(remain):
-        ret[i] += 1
-    ret[-1] += 4
-    #print(f"-----------{ret}. {L}, {pp}")
-    return ret, None
+                min_latency = min(stage_latency)
+                min_latency_index = stage_latency.index(min_latency)
+
+                partition[max_latency_index] -= 1
+                partition[min_latency_index] += 1
+            else:
+                print("max_latency", max_latency)
+                print("last_max_latency", last_max_latency)
+                break
+        else:
+            if pp_degree ==1:
+                partition=[48]
+                stage_latency = [min(np.sum(cost_e1[:]), np.sum(cost_e2[:]))]
+            if pp_degree == 2:
+                partition=[24,24]
+                stage_latency = [min(np.sum(cost_e1[:24]), np.sum(cost_e2[:24])), min(np.sum(cost_e1[24:48]), np.sum(cost_e2[24:48]))]
+            break
+
+    print(f"pipe_ast used {time.time()-time_s} seconds with {num_layer} layers and {pp_degree} stages.")
+    partition[0] += 1
+    partition[-1] += 1
+    return partition, stage_latency
+
 
 def pipe_uniform(L, pp):
-    #print("using a uniform")
     each = L // pp
     remain = L - pp * each
     ret = [each]
@@ -103,26 +75,14 @@ def pipe_uniform(L, pp):
         ret.append(each)
     for i in range(remain):
         ret[i] += 1
-    # print(f"pipe uniform returns {ret}")
-    # print(f"-----------{ret}. {L}, {pp}")
+
     return ret, None
 
-def pipe_cost(L, cost_e, cost_c, k, B, partition):
-    s = partition
-    p = [s[0]-1]
-    
-    for i in range(1, int(k.item())):
-        p.append(p[i-1] + s[i])
-    lens = torch.reshape(torch.sum(cost_e[:p[0]+1]), (-1,1))
-    #print(f"calculating cost: {cost_e} {cost_c} {k} {B} {partition}")
-    for i in range(len(s)-1):
-        lens = torch.cat([lens,torch.reshape(torch.sum(cost_e[p[i]+1:p[i+1]+1]), (-1,1))])
-        
-    max_l = torch.max(lens)
-    cost = (B-1) * max_l
-    for i in range(int(k.item())-1):
-        cost += cost_c[p[i]][i]
-    cost += torch.sum(cost_e)
+def pipe_cost(pp_degree, num_mb, stage_latency):
+    max_latency = max(stage_latency)
+    cost = (num_mb-1) * max_latency
+    #TODO: add non-steadystate cost
+    cost += sum(stage_latency)
     return cost
 
 def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, partition):
@@ -138,12 +98,9 @@ def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, part
     pp = parallel_config["pp"]
     
     _layer = ["embed2h"]
-    #_layer = ["embed2h", "noop"]
     for i in range(int(n.item())):
         _layer.append("transformer_layer")
-    
     _layer.extend(["noop"])
-    #_layer.extend(["noop","noop", "embed2v", "noop"])
     _num_layer = len(_layer)
         
     # First translate to deepspeed partition form
@@ -194,7 +151,6 @@ def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, part
                 else:
                     raise RuntimeError("Unknown layer type.")
                         
-            #print(f"dp: {dp_const} and param {param_count}")
             cur_dp = dp_const * param_count
             if cur_dp > max_dp:
                 max_dp = cur_dp

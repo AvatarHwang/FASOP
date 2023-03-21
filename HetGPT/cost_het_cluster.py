@@ -12,7 +12,7 @@ import torch.nn as nn
 import numpy as np
 
 from amp_utils import rank2axis, axis2rank, get_host
-from pipe import pipe_ds, pipe_ast, pipe_cost, pipe_uniform, pipe_gpt2
+from pipe import pipe_ast, pipe_cost, pipe_uniform
 
 home_dir = os.environ['HOME'] 
 workdir_path = os.path.join(home_dir, "AMP/DeepSpeed/DeepSpeedExamples/Megatron-LM-v1.1.5-3D_parallelism")
@@ -41,22 +41,23 @@ class HetGPT(nn.Module):
 
         json_path = os.path.join(example_path, "ds_config.json")
 
-        self.profile_cost = {}
+        self.profile_cost1 = {}
+        self.profile_cost2 = {}
         for mp_size in [1,2,4]:
             # known_cost directory stores the real forward time with correponding model parallel degree.
-            known_record = f"known_cost/{self.model_type}_A10_{mp_size}" 
-            cur_profile_cost1 = 2 * np.load(f"{known_record}.npy")
-            known_record = f"known_cost/{self.model_type}_RTX3090_{mp_size}"
-            cur_profile_cost2 = 2 * np.load(f"{known_record}.npy")
+            known_record = f"known_cost/{self.model_type}_A100_{mp_size}" 
+            cur_profile_cost1 = 3 * np.load(f"{known_record}.npy")
+            known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
+            cur_profile_cost2 = 3 * np.load(f"{known_record}.npy")
 
-            # average between different speed of GPUs
-            cur_profile_cost = cur_profile_cost1 * 0.75 + cur_profile_cost2 * 0.25
-            self.profile_cost[str(mp_size)] = cur_profile_cost
+            self.profile_cost1[str(mp_size)] = cur_profile_cost1
+            self.profile_cost2[str(mp_size)] = cur_profile_cost2
         
     def forward(self, args):
         model_type = self.model_type
         config, bs, micro_bs, cluster_info, model_config, oth = args
-        amp_config = {"profile_cost" : self.profile_cost}
+        amp_config = {"profile_cost1" : self.profile_cost1,
+                      "profile_cost2" : self.profile_cost2}
         rank_map, partition, amp_pred, pipecost, dp_side_cost = predict(config, bs, micro_bs, cluster_info, model_config, amp_config, oth)
         return rank_map, partition, amp_pred, pipecost, dp_side_cost
         
@@ -74,14 +75,11 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
     pp = parallel_config["pp"]
     
     _layer = ["embed2h"]
-    #_layer = ["embed2h", "noop"]
     for i in range(int(n.item())):
         _layer.append("transformer_layer")
   
     _layer.extend(["noop"])
-    #_layer.extend(["noop","noop", "embed2v", "noop"])
-    #_num_layer = len(_layer)
-    #_layer.extend(["noop"])
+
     _num_layer = len(_layer)
       
     # build layer activation lookup table. Noop exatly has the same activation as the previous op.
@@ -123,10 +121,11 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
                 cost_c[i][k][j] = layer_volume[k]  / slowest_bandwidth
             
     cost_c = torch.mean(cost_c, dim=0)
+    print(len(cost_c))
     return cost_c, _layer
 
 # execution cost for one layer, return shape (L,)
-def get_cost_e(cluster_info, model_config, parallel_config, amp_config):    
+def get_cost_e(cluster_info, model_config, parallel_config, profile_cost):    
 
     h = model_config["hidden_size"]
     s = model_config["sequence_length"]
@@ -139,15 +138,11 @@ def get_cost_e(cluster_info, model_config, parallel_config, amp_config):
     dp = parallel_config["dp"]
     pp = parallel_config["pp"]
 
-    profile_cost = amp_config["profile_cost"]
     _layer = ["embed2h"]
-    #_layer = ["embed2h", "noop"]
     for i in range(int(n.item())):
         _layer.append("transformer_layer")
     _layer.extend(["noop"])
-    #_layer.extend(["noop","noop", "embed2v", "noop"])
-    #_num_layer = len(_layer)
-    #_layer.extend(["noop"])
+
     _num_layer = len(_layer)
             
     cost_e = np.zeros((int(dp.item()), _num_layer))
@@ -155,30 +150,18 @@ def get_cost_e(cluster_info, model_config, parallel_config, amp_config):
     for i in range(int(dp.item())):
         assert _num_layer == len(profile_cost["1"]), "predicted number of layers not equal to actual"
         
-        # mp_avg is only used with placement ablation study. Ignore it in reproducing main results.
         # cost_e in the main result is equivalent to using profile_cost.
-        mp_avg = 0 
         for layer_id in range(_num_layer):
             layer_type = _layer[layer_id]
             cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
                 
-            if layer_type == "embed2h":
-                pass
-            elif layer_type == "embed2v":
-                cur_layer += (v * h / mp * mp_avg).item()
-            elif layer_type == "transformer_layer":
-                cur_layer += ((7*h**2/mp + 2*bs*s*h) * mp_avg).item()
-            elif layer_type == "noop":
-                pass
-            else:
-                raise RuntimeError("Unknown layer type.")
             cost_e[i][layer_id] = cur_layer
     
     cost_e = torch.from_numpy(np.stack(cost_e, axis=0))            
     cost_e = torch.mean(cost_e, dim=0)
     return cost_e
 
-def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, partition):
+def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, partition):
     h = model_config["hidden_size"]
     s = model_config["sequence_length"]
     n = model_config["num_layers"]
@@ -191,12 +174,9 @@ def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, part
     pp = parallel_config["pp"]
     
     _layer = ["embed2h"]
-    #_layer = ["embed2h", "noop"]
     for i in range(int(n.item())):
-        _layer.append("transformer_layer")
-    
+        _layer.append("transformer_layer")    
     _layer.extend(["noop"])
-    #_layer.extend(["noop","noop", "embed2v", "noop"])
     _num_layer = len(_layer)
         
     # First translate to deepspeed partition form
@@ -211,18 +191,13 @@ def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, part
     # should be per-dp_group time
     max_dp = torch.zeros(1,)
     for i in range(int(pp.item())):
-        for j in range(int(mp.item())):
-            
+        for j in range(int(mp.item())): 
             slowest = float("inf")
             for k in range(int(dp.item())):
                 rank_cur = axis2rank(axis=(i,k,j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
                 node_cur = rank_node_map[int(rank_cur.item())]
-                    
-                    
                 rank_next = axis2rank(axis=(i,(k+1)%(dp.item()),j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
-                node_next = rank_node_map[int(rank_next.item())]
-                    
-                    
+                node_next = rank_node_map[int(rank_next.item())]       
                 if node_cur == node_next:
                     connectivity = cluster_info[node_cur][1]
                 else:
@@ -239,9 +214,10 @@ def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, part
                 if layer_type == "embed2h" or layer_type == "embed2v":
                     if not counted:
                         counted = True
-                        param_count += h * v / mp
+                        param_count += 164249600
                 elif layer_type == "transformer_layer":
-                    param_count += 12 * h ** 2 / mp
+                    param_count += 24 * h ** 2 / mp
+                    param_count += 3200 * 2 /mp
                 elif layer_type == "noop":
                     pass
                 else:
@@ -263,8 +239,6 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
     if np.all(config == -1):
         rank_map = defaultdict(list)
         rank_node_map = dict()
-        rank_map_2 = defaultdict(list)
-        rank_node_map_2 = dict()
 
         m = oth["mp_deg"]
         n = oth["dp_deg"]
@@ -272,19 +246,12 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
         
         # infer a GPU rank map                
         counter = 0 
-        counter_2 = 0   
         for j in range(N):
             for k in range(M):
                 # TODO: bad code here, config counts from 1
                 rank_map[j].append(counter)
                 rank_node_map[counter] = j
                 counter += 1
-        for j in range(M):
-            for k in range(N):
-                # TODO: bad code here, config counts from 1
-                rank_map_2[k].append(counter_2)
-                rank_node_map_2[counter_2] = k
-                counter_2 += 1
     
     # valid config, inferred from sa 
     else:
@@ -302,11 +269,9 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
            
         m = oth["mp_deg"]
         n = oth["dp_deg"]
-        pp = oth["pp_deg"] 
-        #assert pp == oth["pp_deg"]                   
+        pp = oth["pp_deg"]                  
         
         rank_counter = np.zeros(int(pp.item()))
-        #rank_counter_2 = np.zeros(int(pp.item()))
             
         # infer a GPU rank map                    
         for j in range(N):
@@ -324,24 +289,21 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
             
     parallel_config = {"mp" : m, "dp" : n, "pp" : pp, "micro_bs" : mbs, "rank_map" : rank_map, "rank_node_map": rank_node_map}
         
-    cost_e = get_cost_e(cluster_info=cluster_info, 
-                        model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
+    cost_e1 = get_cost_e(cluster_info=cluster_info, 
+                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost1"])
+    cost_e2 = get_cost_e(cluster_info=cluster_info, 
+                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost2"])
     cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
         
-    if int(B.item()) == 1:
-        partition, _ = pipe_uniform(int(L.item()), int(pp.item()))
-        #partition[0] += 2
-        partition[0] += 1
-        #partition[-1] += 4
-        partition[-1] += 1
-        print(f"uniform partition: {partition}")
-    else:
-        partition, _ = pipe_ast(len(cost_e), np.asarray(cost_e), np.asarray(cost_c), int(pp.item()), int(B.item()))
-        print(f"ast partition: {partition}")
+
+    # TODO: use cost_e1 and cost_e2
+    print("pp", pp)
+    partition, stage_latency = pipe_ast(len(cost_e1), np.asarray(cost_e1), np.asarray(cost_e2), np.asarray(cost_c), int(pp.item()), int(B.item()), N)
     
     print(f"amp gives partition: {partition}")
-    pipecost = pipe_cost(L, cost_e, cost_c, pp, B, partition)
+    # TODO: use cost_e1 and cost_e2
+    pipecost = pipe_cost(pp, B, stage_latency)
         
     # translate to ds form, add data parallelism cost
     ds_partition, dp_side_cost = dp_cost(config, cluster_info=cluster_info, 
@@ -358,6 +320,8 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
 def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
     hidden_size = model_config["hidden_size"]
     v = model_config["vocab_size"]
+    seq_len = model_config["sequence_length"]
+    num_head = model_config["num_attention_heads"]
     tp_degree = parallel_config["mp"]
     mbs = parallel_config["micro_bs"]
     param_count = []
@@ -371,19 +335,20 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
         pipeline_buffer = 0
         for i in range(stage):
             if layer_type[i] == "embed2h" or "embed2v":
-                param += hidden_size * v / tp_degree
-                avtivation += hidden_size * mbs / tp_degree
+                param += 164249600
+                avtivation += mbs * seq_len * hidden_size
             elif layer_type[i] == "transformer_layer":
-                param += 12 * hidden_size ** 2 / tp_degree
-                avtivation += 12 * hidden_size * mbs / tp_degree
+                param += 24 * hidden_size ** 2 / tp_degree
+                param += 3200 * 2 # LayerNorm
+                avtivation += 9 * mbs * seq_len * hidden_size + mbs * seq_len ** 2 * num_head # reference: https://arxiv.org/pdf/2110.05722.pdf
                 if i == 0:
-                    pipeline_buffer += 12 * hidden_size * mbs / tp_degree
+                    pipeline_buffer += mbs * seq_len * hidden_size # BLH
             elif layer_type[i] == "noop":
                 pass
             layer_index += 1
-        param_count.append(param * 16 / 1024 / 1024 / 1024)
-        activation_memory.append(avtivation * 16 / 1024 / 1024 / 1024)
-        pipeline_buffer_memory.append(pipeline_buffer * 16 / 1024 / 1024 / 1024)
+        param_count.append(param * 16 / 8 / 1024 / 1024 / 1024) # Translate into GB
+        activation_memory.append(avtivation * 16 / 8 / 1024 / 1024 / 1024)
+        pipeline_buffer_memory.append(pipeline_buffer * 16 / 8 / 1024 / 1024 / 1024)
 
     # get peak memory
     peak_memory = []

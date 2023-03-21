@@ -34,6 +34,7 @@ parser.add_argument("--vocab_size", type=int, default=51200)
 parser.add_argument("--type", type=str, default="gpt2XL")
 parser.add_argument("--gpu_per_node", type=int, default=4)
 parser.add_argument("--num_node", type=int, default=4)
+parser.add_argument("--num_attention_heads", type=int, default=16)
 args = parser.parse_args()
 
 # cluster information
@@ -51,15 +52,16 @@ if not os.path.exists(dir_path):
 cluster_info = {}
 
 # inter-node bandwidth, intra-node bandwidth
-cluster_info[0] = [torch.tensor([40 * 1e9 / 32]).float(), torch.tensor([252 * 1e9 / 32]).float()]
+cluster_info[0] = [torch.tensor([40 * 1e9 / 32]).float(), torch.tensor([600 * 1e9 / 32]).float()]
 cluster_info[1] = [torch.tensor([40 * 1e9 / 32]).float(), torch.tensor([252 * 1e9 / 32]).float()]
-cluster_info[2] = [torch.tensor([40 * 1e9 / 32]).float(), torch.tensor([126 * 1e9 / 32]).float()]
-cluster_info[3] = [torch.tensor([40 * 1e9 / 32]).float(), torch.tensor([126 * 1e9 / 32]).float()]
+cluster_info[2] = [torch.tensor([40 * 1e9 / 32]).float(), torch.tensor([252 * 1e9 / 32]).float()]
+cluster_info[3] = [torch.tensor([40 * 1e9 / 32]).float(), torch.tensor([252 * 1e9 / 32]).float()]
 
 model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
                 "sequence_length": torch.tensor([2048]).float(), 
                 "num_layers": torch.tensor([48]).float(), 
                 "vocab_size":torch.tensor([51200]).float(),
+                "num_attention_heads": torch.tensor([16]).float(),
                 "type":args.type}
 
 config_h = int((model_config["hidden_size"]).item())
