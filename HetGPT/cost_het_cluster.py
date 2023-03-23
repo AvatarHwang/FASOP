@@ -74,6 +74,8 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
     dp = parallel_config["dp"]
     pp = parallel_config["pp"]
     
+    precision = 16 # TODO: support fp32, should be args.precision
+
     _layer = ["embed2h"]
     for i in range(int(n.item())):
         _layer.append("transformer_layer")
@@ -118,7 +120,7 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
                 if cur_bandwidth < slowest_bandwidth:
                     slowest_bandwidth = cur_bandwidth
             for k in range(_num_layer-1):
-                cost_c[i][k][j] = layer_volume[k]  / slowest_bandwidth
+                cost_c[i][k][j] = layer_volume[k] * precision / slowest_bandwidth
             
     cost_c = torch.mean(cost_c, dim=0)
     print(len(cost_c))
@@ -187,48 +189,41 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     print(ds_partition, _num_layer)
     assert ds_partition[-1] == _num_layer
     assert len(ds_partition) == pp + 1
+
+    counted = False
+    param_count = 0    
+    for layer_id in range(ds_partition[0], ds_partition[1]):
+        layer_type = _layer[layer_id]
+        if layer_type == "embed2h":
+            if not counted:
+                counted = True
+                param_count += 164249600
+        elif layer_type == "transformer_layer":
+            param_count += 24 * h ** 2 / mp
+            param_count += 3200 * 2 /mp
+    
+    # Get communication bandwidth of pipeline stage 0
+    for j in range(int(mp.item())):
+        bandwidth = []
+        for k in range(int(dp.item())):
+            rank_cur = axis2rank(axis=(0,k,j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
+            node_cur = rank_node_map[int(rank_cur.item())]
+            rank_next = axis2rank(axis=(0,(k+1)%(dp.item()),j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
+            node_next = rank_node_map[int(rank_next.item())]
+
+            if node_cur == node_next:
+                connectivity = cluster_info[node_cur][1]
+            else:
+                connectivity = min(cluster_info[node_cur][0], cluster_info[node_next][0])
+            bandwidth.append(connectivity)
+    # get slowest of bandwidth
+    bandwidth = min(bandwidth)
+
+    # All-reduce cost: 2(n-1)M / nB
+    precision = 16 #TODO: precision should be args.precision
+    dp_cost = 2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth)
                 
-    # should be per-dp_group time
-    max_dp = torch.zeros(1,)
-    for i in range(int(pp.item())):
-        for j in range(int(mp.item())): 
-            slowest = float("inf")
-            for k in range(int(dp.item())):
-                rank_cur = axis2rank(axis=(i,k,j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
-                node_cur = rank_node_map[int(rank_cur.item())]
-                rank_next = axis2rank(axis=(i,(k+1)%(dp.item()),j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
-                node_next = rank_node_map[int(rank_next.item())]       
-                if node_cur == node_next:
-                    connectivity = cluster_info[node_cur][1]
-                else:
-                    connectivity = min(cluster_info[node_cur][0], cluster_info[node_next][0])
-                        
-            slowest = min(slowest, connectivity)
-            dp_const = 2 * (dp-1) / (dp * slowest)
-            dp_const = torch.tensor([dp_const])
-                
-            param_count = torch.zeros(1,)
-            counted = False
-            for layer_id in range(ds_partition[i], ds_partition[i+1]):
-                layer_type = _layer[layer_id]
-                if layer_type == "embed2h" or layer_type == "embed2v":
-                    if not counted:
-                        counted = True
-                        param_count += 164249600
-                elif layer_type == "transformer_layer":
-                    param_count += 24 * h ** 2 / mp
-                    param_count += 3200 * 2 /mp
-                elif layer_type == "noop":
-                    pass
-                else:
-                    raise RuntimeError("Unknown layer type.")
-                        
-            #print(f"dp: {dp_const} and param {param_count}")
-            cur_dp = dp_const * param_count
-            if cur_dp > max_dp:
-                max_dp = cur_dp
-                
-    return ds_partition, max_dp
+    return ds_partition, dp_cost
 
 def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
     L = model_config["num_layers"]
@@ -298,23 +293,46 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
         
 
     # TODO: use cost_e1 and cost_e2
-    print("pp", pp)
     partition, stage_latency = pipe_ast(len(cost_e1), np.asarray(cost_e1), np.asarray(cost_e2), np.asarray(cost_c), int(pp.item()), int(B.item()), N)
     
-    print(f"amp gives partition: {partition}")
-    # TODO: use cost_e1 and cost_e2
-    pipecost = pipe_cost(pp, B, stage_latency)
-        
+    print(f"HetGPT gives partition: {partition}")
+
+    pipecost_last = pipe_cost(pp, B, stage_latency)       
     # translate to ds form, add data parallelism cost
-    ds_partition, dp_side_cost = dp_cost(config, cluster_info=cluster_info, 
+    ds_partition_last, dp_side_cost_last = dp_cost(config, cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, 
                         amp_config=amp_config, partition=partition)
-       
-    cost = pipecost + dp_side_cost
 
+    cost_last = pipecost_last + dp_side_cost_last
+    while(1):
+        min_latency = min(stage_latency)
+        min_latency_index = stage_latency.index(min_latency)
+        if partition[0] <= 2:
+            break
+        partition[min_latency_index] += 1
+        partition[0] -= 1
+
+        # TODO: use cost_e1 and cost_e2
+        pipecost = pipe_cost(pp, B, stage_latency)       
+        # translate to ds form, add data parallelism cost
+        ds_partition, dp_side_cost = dp_cost(config, cluster_info=cluster_info, 
+                            model_config=model_config, parallel_config=parallel_config, 
+                            amp_config=amp_config, partition=partition)
+        #TODO: add cost of word embedding all reduce                
+        cost_current = pipecost + dp_side_cost
+        if cost_current < cost_last:
+            ds_partition_last = ds_partition
+            pipecost_last = pipecost
+            dp_side_cost_last = dp_side_cost
+            cost_last = cost_current
+            print("HetGPT changed partition: ", partition, "cost: ", cost_current, "cost_last: ", cost_last)
+        else:
+            partition[min_latency_index] -= 1
+            partition[0] += 1
+            break
     oom_flag = EstimatePeakMemory(partition, model_config, parallel_config, layer_type)
 
-    return rank_map, ds_partition, cost, pipecost, dp_side_cost
+    return rank_map, ds_partition_last, cost_last, pipecost_last, dp_side_cost_last
     
 
 def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
