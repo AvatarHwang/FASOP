@@ -31,13 +31,24 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node):
             for i in range(pp_degree):
                 if i < pp_per_node:
                     if i == 0:
+                        print("stage ", i)
+                        print("cost_e1:", cost_e1)
+                        print("cost_e1", cost_e1[:partition[i]])
                         stage_latency.append(np.sum(cost_e1[:partition[i]]))
                     else:
+                        print("stage ", i)
+                        print("cost_e1:", cost_e1)
+                        print("cost_e1", cost_e1[sum(partition[:i]):sum(partition[:i+1])])
+                        print("cost_c", cost_c[sum(partition[:i])-1][i-1])
                         stage_latency.append(np.sum(cost_e1[sum(partition[:i]):sum(partition[:i+1])] \
-                        + cost_c[sum(partition[:i])][i-1]))
+                        + cost_c[sum(partition[:i])-1][i-1]))
                 else:
+                    print("stage ", i)
+                    print("cost_e1:", cost_e1)
+                    print("cost_e2", cost_e2[sum(partition[:i]):sum(partition[:i+1])])
+                    print("cost_c", cost_c[sum(partition[:i])-1][i-1])
                     stage_latency.append(np.sum(cost_e2[sum(partition[:i]):sum(partition[:i+1])] \
-                    + cost_c[sum(partition[:i])][i-1]))
+                    + cost_c[sum(partition[:i])-1][i-1]))
             
             # get index of max and value
             print("stage_latency", stage_latency)
@@ -53,7 +64,7 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node):
 
                 if partition[max_latency_index] == 1:
                     break
-                if max_latency_index == 0 and partition[max_latency_index] == 2:
+                if (max_latency_index == 0 or max_latency_index == pp_degree-1) and partition[max_latency_index] == 2:
                     break
                 partition[max_latency_index] -= 1
                 partition[min_latency_index] += 1
@@ -64,11 +75,11 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node):
             stage_latency = []
             if pp_degree ==1:
                 partition=[50]
-                stage_latency = [min(np.sum(cost_e1), np.sum(cost_e2))]
+                stage_latency = [max(np.sum(cost_e1), np.sum(cost_e2))]
                 break
             if pp_degree == 2:
                 stage_latency.append(np.sum(cost_e1[:partition[0]]))
-                stage_latency.append(np.sum(cost_e2[partition[0]:sum(partition[:2])]) + cost_c[partition[0]][0])
+                stage_latency.append(np.sum(cost_e2[partition[0]:sum(partition[:2])]) + cost_c[partition[0]-1][0])
                 temp_max_latency = max(stage_latency)
                 if temp_max_latency <= max_latency:
                     max_latency = temp_max_latency

@@ -15,10 +15,6 @@ from amp_utils import rank2axis, axis2rank, get_host
 from pipe import pipe_ast, pipe_cost, pipe_uniform
 
 home_dir = os.environ['HOME'] 
-workdir_path = os.path.join(home_dir, "AMP/DeepSpeed/DeepSpeedExamples/Megatron-LM-v1.1.5-3D_parallelism")
-example_path = os.path.join(workdir_path, "examples")
-sys.path.append(workdir_path)
-sys.path.append(example_path)
 
 class HetGPT(nn.Module):
     def __init__(self, model_config, exp_name):
@@ -39,16 +35,16 @@ class HetGPT(nn.Module):
         config_h = int((self.model_config["hidden_size"]).item())
         config_n = int(n)
 
-        json_path = os.path.join(example_path, "ds_config.json")
+        
 
         self.profile_cost1 = {}
         self.profile_cost2 = {}
         for mp_size in [1,2,4]:
             # known_cost directory stores the real forward time with correponding model parallel degree.
             known_record = f"known_cost/{self.model_type}_A100_{mp_size}" 
-            cur_profile_cost1 = 3 * np.load(f"{known_record}.npy")
+            cur_profile_cost1 = 2 * np.load(f"{known_record}.npy")
             known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
-            cur_profile_cost2 = 3 * np.load(f"{known_record}.npy")
+            cur_profile_cost2 = 2 * np.load(f"{known_record}.npy")
 
             self.profile_cost1[str(mp_size)] = cur_profile_cost1
             self.profile_cost2[str(mp_size)] = cur_profile_cost2
@@ -123,12 +119,10 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
                 cost_c[i][k][j] = layer_volume[k] * precision / slowest_bandwidth
             
     cost_c = torch.mean(cost_c, dim=0)
-    print(len(cost_c))
     return cost_c, _layer
 
 # execution cost for one layer, return shape (L,)
 def get_cost_e(cluster_info, model_config, parallel_config, profile_cost):    
-
     h = model_config["hidden_size"]
     s = model_config["sequence_length"]
     n = model_config["num_layers"]
@@ -143,7 +137,10 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost):
     _layer = ["embed2h"]
     for i in range(int(n.item())):
         _layer.append("transformer_layer")
-    _layer.extend(["noop"])
+    if pp>1:
+        _layer.extend(["embed2h"])
+    else:
+        _layer.extend(["noop"])
 
     _num_layer = len(_layer)
             
@@ -155,8 +152,12 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost):
         # cost_e in the main result is equivalent to using profile_cost.
         for layer_id in range(_num_layer):
             layer_type = _layer[layer_id]
-            cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
-                
+            if layer_type == "embed2h":
+                cur_layer = profile_cost[str(int(mp.item()))][layer_id]
+            elif layer_type == "transformer_layer":
+                cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
+            else:
+                cur_layer = 0
             cost_e[i][layer_id] = cur_layer
     
     cost_e = torch.from_numpy(np.stack(cost_e, axis=0))            
@@ -183,10 +184,8 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         
     # First translate to deepspeed partition form
     ds_partition = [0]
-    print(f"partition: {partition}")
     for i in range(len(partition)):
         ds_partition.append(ds_partition[-1]+partition[i])
-    print(ds_partition, _num_layer)
     assert ds_partition[-1] == _num_layer
     assert len(ds_partition) == pp + 1
 
@@ -374,7 +373,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
         peak_memory.append(param_count[i] + activation_memory[i] + pipeline_buffer_memory[i])
     peak_memory = max(peak_memory)
 
-    gpu_memory = 24
+    gpu_memory = 24 #TODO: get gpu memory from args
     if peak_memory > gpu_memory:
         print("peak memory is larger than gpu memory")
         print(f"peak memory is {peak_memory} GB")
