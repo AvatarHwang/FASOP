@@ -1,0 +1,26 @@
+[INFO] Extracting squashfs filesystem...
+Parallel unsquashfs: Using 56 processors
+252259 inodes (406300 blocks) to write
+
+
+created 207418 files
+created 32968 directories
+created 8846 symlinks
+created 0 devices
+created 0 fifos
+[I 14:18:34.167 LabApp] Writing notebook server cookie secret to /home2/eung0/.local/share/jupyter/runtime/notebook_cookie_secret
+[I 14:18:34.666 LabApp] jupyter_tensorboard extension loaded.
+[I 14:18:34.672 LabApp] JupyterLab extension loaded from /opt/conda/lib/python3.8/site-packages/jupyterlab
+[I 14:18:34.672 LabApp] JupyterLab application directory is /opt/conda/share/jupyter/lab
+[I 14:18:34.674 LabApp] [Jupytext Server Extension] NotebookApp.contents_manager_class is (a subclass of) jupytext.TextFileContentsManager already - OK
+[I 14:18:34.674 LabApp] Serving notebooks from local directory: /jupyter-pytorch
+[I 14:18:34.674 LabApp] Jupyter Notebook 6.4.1 is running at:
+[I 14:18:34.674 LabApp] http://hostname:8888/?token=d121bba56780cb8c05d13b680af610d8cb72f9e75b59fe1c
+[I 14:18:34.675 LabApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[C 14:18:34.678 LabApp] 
+    
+    To access the notebook, open this file in a browser:
+        file:///home2/eung0/.local/share/jupyter/runtime/nbserver-16625-open.html
+    Or copy and paste this URL:
+        http://hostname:8888/?token=d121bba56780cb8c05d13b680af610d8cb72f9e75b59fe1c
+slurmstepd: error: *** JOB 10906917 ON n082 CANCELLED AT 2023-03-24T14:39:24 ***
