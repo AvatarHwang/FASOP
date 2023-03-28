@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --nodes=3
+#SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu2
-#SBATCH --nodelist=n069,n070,n071
-#SBATCH --gres=gpu:a10:4,gpu:a10:4,gpu:a10:4,gpu:a10:4
+#SBATCH --nodelist=n081
+#SBATCH --gres=gpu:a10:4
 #SBATCH --cpus-per-task=28
 #SBATCH -o ./log2/%j.sbatch.%N.out         
 #SBATCH -e ./log2/%j.sbatch.%N.err         
