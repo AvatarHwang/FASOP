@@ -1,5 +1,6 @@
 NODE_RANK=$1
 SCRIPT_NAME='run_inter.sh'
+#enroot create $HOME/tdpp/image/megatron-latest.sqsh
 enroot start --root \
             --rw \
             -m $HOME/tdpp/Megatron-LM-2:/root/Megatron-LM megatron-latest \

@@ -775,7 +775,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             torch.profiler.ProfilerActivity.CPU,
             torch.profiler.ProfilerActivity.CUDA
         ],
-        schedule=torch.profiler.schedule(wait=0, warmup=40, active=10),
+        schedule=torch.profiler.schedule(wait=0, warmup=40, active=1),
         on_trace_ready=torch.profiler.tensorboard_trace_handler('./log'),
         with_stack=True,
         with_flops=True

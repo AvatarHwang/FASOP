@@ -8,7 +8,8 @@ import sys
 import time
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
-global_time =  time.time()
+start_time = None
+bwd_times = []
 exec_times = []
 import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
@@ -407,37 +408,52 @@ def train_step_profile(forward_step_func, data_iterator,
     if args.DDP_impl == 'local' and args.use_contiguous_buffers_in_local_ddp:
         for partition in model:
             partition.zero_grad_buffer()
+    
     optimizer.zero_grad()
 
     # Forward pass.
+    def StartTime(self, input):
+        global start_time
+        torch.cuda.synchronize()
+        start_time = time.time()
     def StoreTime(self, input, output):
-        global global_time, exec_times
-        global_time = time.time()
+        global start_time, exec_times
         torch.cuda.synchronize()
-        exec_times.append(time.time() - global_time)
-        torch.cuda.synchronize()
-        global_time = time.time()
+        exec_times.append(time.time() - start_time)
+
     for module in model[0].modules():
+        module.register_forward_pre_hook(StartTime)
         module.register_forward_hook(StoreTime)
-    global_time = time.time()
+    
     forward_backward_func = get_forward_backward_func()
     fwd_bwd_timers = timers if args.timing_log_level > 1 else None
     losses_reduced = forward_backward_func(
         forward_step_func, data_iterator, model,
         optimizer, fwd_bwd_timers, forward_only=False)
     timers('forward-backward').stop()
-    t2= time.time()
+
     module_time=[]
+
     for module, t in zip(model[0].modules(), exec_times):
         module_time.append(t)
+        #print(f"{module.__class__}: {t}")
+
+    print(f"Total time: {sum(module_time)}")
+
+    # insert 0 for the first module
     module_time.insert(0, 0)
     module_time.insert(0, 0)
-    layer_time=[]
+
+    layer_time = []
+    # layer time is sum of 12 modules
     for i in range(0, len(module_time), 12):
-        layer_time.append(sum(module_time[i:i+12]))
-    layer_time[-1] += module_time[-1]
-    print_rank_0(f"layer_time:\n{layer_time}\n\n\n")
-    layer_time=[]
+        layer_time.append(sum(module_time[i:i+12]))  
+
+    for i in range(len(layer_time)):
+        layer_time[i] = layer_time[i]*354.9/910.5 # Profile overhead is considered
+
+    print(f"Layer time: {layer_time}")
+
     # Empty unused memory.
     if args.empty_unused_memory_level >= 1:
         torch.cuda.empty_cache()
@@ -769,98 +785,87 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
-    report_memory_flag = True
-    with torch.profiler.profile(
-        activities=[
-            torch.profiler.ProfilerActivity.CPU,
-            torch.profiler.ProfilerActivity.CUDA
-        ],
-        schedule=torch.profiler.schedule(wait=0, warmup=40, active=10),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler('./log'),
-        with_stack=True,
-        with_flops=True
-        ) as p:
-            while iteration < args.train_iters:
-                update_num_microbatches(args.consumed_train_samples)
-                args.curr_iteration = iteration
-                loss_dict, skipped_iter, grad_norm, num_zeros_in_grad = \
-                    train_step(forward_step_func,
-                            train_data_iterator,
-                            model,
-                            optimizer,
-                            opt_param_scheduler)
-                p.step()
-                
-                iteration += 1
-                args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
-                                            args.micro_batch_size * \
-                                            get_num_microbatches()
+    while iteration < args.train_iters:
+        update_num_microbatches(args.consumed_train_samples)
+        args.curr_iteration = iteration
+        loss_dict, skipped_iter, grad_norm, num_zeros_in_grad = \
+            train_step_profile(forward_step_func,
+                    train_data_iterator,
+                    model,
+                    optimizer,
+                    opt_param_scheduler)
+        
+        iteration += 1
+        args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
+                                    args.micro_batch_size * \
+                                    get_num_microbatches()
 
-                # Logging.
-                loss_scale = optimizer.get_loss_scale().item()
-                params_norm = None
-                if args.log_params_norm:
-                    params_norm = calc_params_l2_norm(model)
-                report_memory_flag = training_log(loss_dict, total_loss_dict,
-                                                optimizer.param_groups[0]['lr'],
-                                                iteration, loss_scale,
-                                                report_memory_flag, skipped_iter,
-                                                grad_norm, params_norm, num_zeros_in_grad)
+        # Logging.
+        loss_scale = optimizer.get_loss_scale().item()
+        params_norm = None
+        if args.log_params_norm:
+            params_norm = calc_params_l2_norm(model)
+        report_memory_flag=False
+        report_memory_flag = training_log(loss_dict, total_loss_dict,
+                                        optimizer.param_groups[0]['lr'],
+                                        iteration, loss_scale,
+                                        report_memory_flag, skipped_iter,
+                                        grad_norm, params_norm, num_zeros_in_grad)
 
-                # Autoresume
-                if args.adlr_autoresume and \
-                (iteration % args.adlr_autoresume_interval == 0):
-                    check_adlr_autoresume_termination(iteration, model, optimizer,
-                                                    opt_param_scheduler)
+        # Autoresume
+        if args.adlr_autoresume and \
+        (iteration % args.adlr_autoresume_interval == 0):
+            check_adlr_autoresume_termination(iteration, model, optimizer,
+                                            opt_param_scheduler)
 
-                # Evaluation
-                if args.eval_interval and iteration % args.eval_interval == 0 and \
-                args.do_valid:
-                    prefix = 'iteration {}'.format(iteration)
-                    evaluate_and_print_results(prefix, forward_step_func,
-                                            valid_data_iterator, model,
-                                            iteration, process_non_loss_data_func,
-                                            False)
+        # Evaluation
+        if args.eval_interval and iteration % args.eval_interval == 0 and \
+        args.do_valid:
+            prefix = 'iteration {}'.format(iteration)
+            evaluate_and_print_results(prefix, forward_step_func,
+                                    valid_data_iterator, model,
+                                    iteration, process_non_loss_data_func,
+                                    False)
 
-                # Checkpointing
-                saved_checkpoint = False
-                if args.exit_signal_handler:
-                    signal_handler = get_signal_handler()
-                    if any(signal_handler.signals_received()):
-                        save_checkpoint_and_time(iteration, model, optimizer,
-                                                opt_param_scheduler)
-                        print_datetime('exiting program after receiving SIGTERM.')
-                        sys.exit()
+        # Checkpointing
+        saved_checkpoint = False
+        if args.exit_signal_handler:
+            signal_handler = get_signal_handler()
+            if any(signal_handler.signals_received()):
+                save_checkpoint_and_time(iteration, model, optimizer,
+                                        opt_param_scheduler)
+                print_datetime('exiting program after receiving SIGTERM.')
+                sys.exit()
 
-                if args.save and args.save_interval and \
-                iteration % args.save_interval == 0:
+        if args.save and args.save_interval and \
+        iteration % args.save_interval == 0:
+            save_checkpoint_and_time(iteration, model, optimizer,
+                                    opt_param_scheduler)
+            saved_checkpoint = True
+
+        # Exiting based on duration
+        if args.exit_duration_in_mins:
+            train_time = (time.time() - _TRAIN_START_TIME) / 60.0
+            done_cuda = torch.cuda.IntTensor(
+                [train_time > args.exit_duration_in_mins])
+            torch.distributed.all_reduce(
+                done_cuda, op=torch.distributed.ReduceOp.MAX)
+            done = done_cuda.item()
+            if done:
+                if not saved_checkpoint:
                     save_checkpoint_and_time(iteration, model, optimizer,
                                             opt_param_scheduler)
-                    saved_checkpoint = True
+                print_datetime('exiting program after {} minutes'.format(train_time))
+                sys.exit()
 
-                # Exiting based on duration
-                if args.exit_duration_in_mins:
-                    train_time = (time.time() - _TRAIN_START_TIME) / 60.0
-                    done_cuda = torch.cuda.IntTensor(
-                        [train_time > args.exit_duration_in_mins])
-                    torch.distributed.all_reduce(
-                        done_cuda, op=torch.distributed.ReduceOp.MAX)
-                    done = done_cuda.item()
-                    if done:
-                        if not saved_checkpoint:
-                            save_checkpoint_and_time(iteration, model, optimizer,
-                                                    opt_param_scheduler)
-                        print_datetime('exiting program after {} minutes'.format(train_time))
-                        sys.exit()
-
-                # Exiting based on iterations
-                if args.exit_interval and iteration % args.exit_interval == 0:
-                    if not saved_checkpoint:
-                        save_checkpoint_and_time(iteration, model, optimizer,
-                                                opt_param_scheduler)
-                    torch.distributed.barrier()
-                    print_datetime('exiting program at iteration {}'.format(iteration))
-                    sys.exit()
+        # Exiting based on iterations
+        if args.exit_interval and iteration % args.exit_interval == 0:
+            if not saved_checkpoint:
+                save_checkpoint_and_time(iteration, model, optimizer,
+                                        opt_param_scheduler)
+            torch.distributed.barrier()
+            print_datetime('exiting program at iteration {}'.format(iteration))
+            sys.exit()
 
 
     return iteration
