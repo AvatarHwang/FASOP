@@ -4,9 +4,9 @@ import time
 import torch
 import numpy as np
 
-from amp_utils import rank2axis, axis2rank, get_host
+from amp_utils import axis2rank
 
-def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, gpu_per_node):
+def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, gpu_per_node, dp_degree):
     time_s = time.time()
 
     pp_per_node = pp_degree // num_node
@@ -17,7 +17,6 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
         num_balanced_layer = 48
     partition = []
     max_latency = 1000000
-    last_max_latency = 1000000
     for i in range(pp_degree):
         partition.append(num_balanced_layer)
     partition[0] += 1
@@ -26,18 +25,17 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
     print("initial partition is", partition)
 
     while(1):
-        stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node)
+        stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, dp_degree)
 
         if pp_degree == 1 or pp_per_node < 1:
             break
             
         # get index of max and value
         print("stage_latency", stage_latency)
-        temp_max_latency = max(stage_latency)
+        last_max_latency = max(stage_latency)
 
-        if temp_max_latency <= max_latency:
-            max_latency = temp_max_latency
-            last_max_latency = temp_max_latency
+        if last_max_latency <= max_latency:
+            max_latency = last_max_latency
             max_latency_index = stage_latency.index(max_latency)
 
             min_latency = min(stage_latency)
@@ -60,27 +58,19 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
     return partition, stage_latency#TODO:stage_comp, stage_comm # stage-1 dim
 
 
-def pipe_uniform(L, pp):
-    each = L // pp
-    remain = L - pp * each
-    ret = [each]
-    for i in range(pp-1):
-        ret.append(each)
-    for i in range(remain):
-        ret[i] += 1
-
-    return ret, None
-
 def pipe_cost(pp_degree, num_mb, stage_latency):
+    print(f"sum of stage_latency is {sum(stage_latency)}")
 
-    # max_latency = max(stage_latency)
-    # cost = (num_mb-1) * max_latency
-    # cost += sum(stage_latency)
+    max_latency = max(stage_latency)
+    print(f"max_latency is {max_latency}")
+    cost = (num_mb-1) * max_latency
+    print(f"num_mb is {num_mb}, cost is {cost}")
+    cost += sum(stage_latency)
+    print(f"cost is {cost}")
 
-    cost = sum(stage_latency)
-    last_stage_latency = stage_latency[-1]
-    # print(num_mb)
-    cost += (num_mb.item()-1)*last_stage_latency
+    # cost = sum(stage_latency)
+    # last_stage_latency = stage_latency[-1]
+    # cost += (num_mb.item()-1)*last_stage_latency
 
     return cost
 
@@ -91,8 +81,6 @@ def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, part
     s = model_config["sequence_length"]
     n = model_config["num_layers"]
     v = model_config["vocab_size"]
-    bs = parallel_config["micro_bs"]
-    rank_map = parallel_config["rank_map"]
     rank_node_map = parallel_config["rank_node_map"]
     mp = parallel_config["mp"]
     dp = parallel_config["dp"]
@@ -159,9 +147,12 @@ def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, part
     return ds_partition, max_dp
 
 
-def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node):
+def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, dp_degree):
     stage_latency = []
+    num_bw_share = min(gpu_per_node, dp_degree)
     num_stage = len(partition)
+    if num_stage==1:
+        return [sum(cost_e2)]
     for stage in range(num_stage):
         num_layer_til_last_stage = sum(partition[:stage])
         num_layer_til_cur_stage = sum(partition[:stage+1])
@@ -173,16 +164,20 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
                     num_layer_til_last_stage = sum(partition[:stage])
                     num_layer_til_cur_stage = sum(partition[:stage+1])
                     stage_latency.append(sum(cost_e1[num_layer_til_last_stage:num_layer_til_cur_stage]) \
-                                        + 2*cost_c[sum(partition[:stage])][stage-1])
+                                        + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
             else:
                 stage_latency.append(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]) \
-                                    + 2*cost_c[sum(partition[:stage])][stage-1]) # bandwidth should be shared by pp_per_node?
+                                    + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
         else:
             if num_stage ==1:
                 stage_latency = [max(np.sum(cost_e1), np.sum(cost_e2))]
             else:
                 stage_latency.append(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage])\
                                     + 2*cost_c[sum(partition[:stage])][stage-1])
+        if stage == num_stage-1:
+            # Substract the activation communication cost from the last stage
+            # since the backward of the last stage does not need to communicate
+            stage_latency[-1] -= cost_c[sum(partition[:stage])][stage-1]
 
     return stage_latency
 

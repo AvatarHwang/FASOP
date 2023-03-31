@@ -1,25 +1,13 @@
-# Script to reproduce homogeneous setting results
-
-import math
 import time
-from collections import defaultdict
-import operator
-import random
+
 import os
-import copy
-
-from tqdm import tqdm
-
 import numpy as np
 
 import torch
 from torch import optim as optim
-import torch.nn as nn
-import torch.nn.functional as F
 
 from sa import amp_no_placement_strategy
 from cost_het_cluster import HetGPT
-from amp_utils import simulate, to_float_torch
 
 import argparse
 
@@ -70,9 +58,6 @@ config_n = int(model_config["num_layers"].item())
 time_stamp = int(time.time())
 exp_name = f"het_cluster"
 record_file = f"{os.path.join(dir_path, exp_name)}_{time_stamp}.txt"
-simulate_dir = os.path.join(home_path, "amp_simulate")
-if not os.path.exists(simulate_dir):
-    os.mkdir(simulate_dir)
 
 # remove cache directory from last run
 if os.path.exists(os.path.join(home_path, "tmp")):
@@ -83,29 +68,28 @@ if os.path.exists(os.path.join(home_path, "tmp")):
 # save this name to env
 os.environ["amp_log_path"] = record_file
 
-global_bs = int(args.gbs)
+gbs = int(args.gbs)
 model = HetGPT(model_config, exp_name)
-assert (global_bs % gpu_per_node == 0) and (global_bs % num_node == 0), "global batch size is too irrgular"
+assert (gbs % gpu_per_node == 0) and (gbs % num_node == 0), "global batch size is too irrgular"
 
 want_simulate = [] 
 feasible = {}
 
 with open(record_file, "a") as fp:
     fp.write(f"{model_config}\n")                
-    fp.write(f"gbs:{global_bs}\n")                
+    fp.write(f"gbs:{gbs}\n")                
 known = None
-iter_count = 0
 
 # Estimating best configurations
 while True:
-    ret = amp_no_placement_strategy(M=gpu_per_node, N=num_node, gbs=global_bs, known=known)
+    ret = amp_no_placement_strategy(M=gpu_per_node, N=num_node, gbs=gbs, known=known)
     if ret is None:
         break
     else:
         h, w, mbs, known = ret
-        parallel_dim = {"mp_deg": torch.ones(1,)*h, "dp_deg": torch.ones(1,)*w, "pp_deg": torch.ones(1,)*(gpu_per_node*num_node/(h*w))}
+        parallel_dim = {"tp_deg": torch.ones(1,)*h, "dp_deg": torch.ones(1,)*w, "pp_deg": torch.ones(1,)*(gpu_per_node*num_node/(h*w))}
         fake_config = np.ones((gpu_per_node,num_node)) * (-1)
-        model_args = (fake_config, global_bs, mbs, cluster_info, model_config, parallel_dim)    
+        model_args = (fake_config, gbs, mbs, cluster_info, model_config, parallel_dim)    
 
         with torch.no_grad():
             oom_flag, rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost = model(model_args)
@@ -116,7 +100,6 @@ while True:
 
         want_simulate.append(((mbs, parallel_dim, rank_map, partition), cost.item(), pipecost.item(), dp_side_cost.item(), all_reduce_embedding_cost, oom_flag))
 
-    iter_count += 1
 print(f"Finished {time.time() - time_s}")
 
 sorted_settings = sorted(want_simulate, key = lambda kv: kv[1])

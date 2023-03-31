@@ -1,18 +1,13 @@
 from collections import defaultdict
-import time
-import json
-import copy
 
-import subprocess
-import sys
 import os
 
 import torch
 import torch.nn as nn
 import numpy as np
 
-from amp_utils import rank2axis, axis2rank, get_host
-from pipe import pipe_ast, pipe_cost, pipe_uniform, get_stage_latency
+from amp_utils import axis2rank
+from pipe import pipe_ast, pipe_cost, get_stage_latency
 
 home_dir = os.environ['HOME'] 
 
@@ -42,10 +37,10 @@ class HetGPT(nn.Module):
         for mp_size in [1,2,4]:
             # known_cost directory stores the real forward time with correponding model parallel degree.
             known_record = f"known_cost/{self.model_type}_A100_{mp_size}" 
-            cur_profile_cost1 = 2.6 * np.load(f"{known_record}.npy")
+            cur_profile_cost1 = 3 * np.load(f"{known_record}.npy")
             cur_profile_cost1 = np.append(cur_profile_cost1, cur_profile_cost1[0])
             known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
-            cur_profile_cost2 = 2.6 * np.load(f"{known_record}.npy")
+            cur_profile_cost2 = 3 * np.load(f"{known_record}.npy")
             cur_profile_cost2 = np.append(cur_profile_cost2, cur_profile_cost2[0])
 
             self.profile_cost1[str(mp_size)] = cur_profile_cost1
@@ -179,13 +174,15 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost):
     cost_e = torch.mean(cost_e, dim=0)
     return cost_e
 
-def cost_all_reduce_embedding(config, cluster_info, parallel_config, gpu_per_node):
+def cost_all_reduce_embedding(model_config, cluster_info, parallel_config, gpu_per_node):
     precision = 16 # TODO: support fp32, should be args.precision
     tp_degree = int(parallel_config["mp"].item())
     dp_degree = int(parallel_config["dp"].item())
     pp_degree = int(parallel_config["pp"].item())
     rank_map = parallel_config["rank_map"]
     rank_node_map = parallel_config["rank_node_map"]
+    hidden_size = int(model_config["hidden_size"].item())
+    vocab_size = int(model_config["vocab_size"].item())
 
     if pp_degree>1:
         # Get communication bandwidth between pipeline stage 0 and -1
@@ -208,7 +205,7 @@ def cost_all_reduce_embedding(config, cluster_info, parallel_config, gpu_per_nod
         # if dp_degree<gpu_per_node, we assume the bandwidth is shared by all dp_degree
         # else, we assume the bandwidth is shared by all gpu_per_node
         band_width = slowest_bandwidth/min(dp_degree, gpu_per_node) 
-        embedding_syn_cost = 2*(2-1)*(164249600*precision)/(2*band_width) #TODO: caculate the size of embedding, TODO: clearify if we should divide by tp_degree
+        embedding_syn_cost = 2*(2-1)*(hidden_size*vocab_size*precision)/(2*band_width) #TODO: caculate the size of embedding, TODO: clearify if we should divide by tp_degree
         return embedding_syn_cost
     else:
         return 0
@@ -278,7 +275,7 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
                 
     return ds_partition, dp_cost
 
-def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
+def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
     L = model_config["num_layers"]
     cost = torch.zeros(1,)
     M, N = config.shape
@@ -288,9 +285,9 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
         rank_map = defaultdict(list)
         rank_node_map = dict()
 
-        m = oth["mp_deg"]
-        n = oth["dp_deg"]
-        pp = oth["pp_deg"]                   
+        tp_degree = oth["tp_deg"]
+        dp_degree = oth["dp_deg"]
+        pp_degree = oth["pp_deg"]                   
         
         # infer a GPU rank map                
         counter = 0 
@@ -315,9 +312,9 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
             print(f"early return with pp={pp}, L={L}")
             return None, None, torch.tensor([float("inf")])
            
-        m = oth["mp_deg"]
-        n = oth["dp_deg"]
-        pp = oth["pp_deg"]                  
+        tp_degree = oth["tp_deg"]
+        dp_degree = oth["dp_deg"]
+        pp_degree = oth["pp_deg"]                  
         
         rank_counter = np.zeros(int(pp.item()))
             
@@ -326,16 +323,16 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
             for k in range(M):
                 # TODO: bad code here, config counts from 1
                 cur_pp = int(config[k][j] - 1)
-                rank_map[j].append(int((rank_counter[cur_pp] + cur_pp * m * n).item()))
-                rank_node_map[int((rank_counter[cur_pp] + cur_pp * m * n).item())] = j
+                rank_map[j].append(int((rank_counter[cur_pp] + cur_pp * tp_degree * dp_degree).item()))
+                rank_node_map[int((rank_counter[cur_pp] + cur_pp * tp_degree * dp_degree).item())] = j
                 rank_counter[cur_pp] += 1
             
     # infer number of micro-batch size B
     # mbs = gbs / dp
-    B = bs / (n * mbs)
-    mbs = bs / (n * B)
+    num_mb = gbs / (dp_degree * mbs)
+    mbs = gbs / (dp_degree * num_mb)
             
-    parallel_config = {"mp" : m, "dp" : n, "pp" : pp, "micro_bs" : mbs, "rank_map" : rank_map, "rank_node_map": rank_node_map}
+    parallel_config = {"mp" : tp_degree, "dp" : dp_degree, "pp" : pp_degree, "micro_bs" : mbs, "rank_map" : rank_map, "rank_node_map": rank_node_map}
         
     cost_e1 = get_cost_e(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost1"])
@@ -344,21 +341,21 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
     cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
         
-    partition, stage_latency = pipe_ast(len(cost_e1), np.asarray(cost_e1), np.asarray(cost_e2), np.asarray(cost_c), int(pp.item()), int(B.item()), N, M)
+    partition, stage_latency = pipe_ast(len(cost_e1), np.asarray(cost_e1), np.asarray(cost_e2), np.asarray(cost_c), int(pp_degree.item()), int(num_mb.item()), N, M, dp_degree)
     
     print(f"Step 1 partition: {partition}")
 
-    pipecost_last = pipe_cost(pp, B, stage_latency)       
+    pipecost_last = pipe_cost(pp_degree, num_mb, stage_latency)       
     # translate to ds form, add data parallelism cost
     ds_partition_last, dp_side_cost_last = dp_cost(config, cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, 
                         amp_config=amp_config, partition=partition)
     
-    all_reduce_embedding_cost = cost_all_reduce_embedding(config, cluster_info, parallel_config, M)
+    all_reduce_embedding_cost = cost_all_reduce_embedding(model_config, cluster_info, parallel_config, M)
 
     cost_last = pipecost_last + dp_side_cost_last + all_reduce_embedding_cost
 
-    if pp>1:
+    if pp_degree>1:
         while(1):
             min_latency = min(stage_latency)
             min_latency_index = stage_latency.index(min_latency)
@@ -368,13 +365,13 @@ def predict(config, bs, mbs, cluster_info, model_config, amp_config, oth):
             partition[0] -= 1
 
             # update stage_latency
-            pp_degree = int(pp.item())
+            pp_degree = int(pp_degree)
             pp_per_node = int(pp_degree / N)
 
             # update stage_latency
-            stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, M)
+            stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, M, dp_degree)
 
-            pipecost = pipe_cost(pp, B, stage_latency)       
+            pipecost = pipe_cost(pp_degree, num_mb, stage_latency)       
             # translate to ds form, add data parallelism cost
             ds_partition, dp_side_cost = dp_cost(config, cluster_info=cluster_info, 
                                 model_config=model_config, parallel_config=parallel_config, 
