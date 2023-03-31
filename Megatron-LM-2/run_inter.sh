@@ -1,18 +1,18 @@
 #!/bin/bash
 
 NODE_RANK=$1
-MASTER_ADDR=$2
-NPROC_PER_NODE=1
+MASTER_ADDR=192.168.100.60
+NPROC_PER_NODE=4
 NNODES=4
 WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
-GLOBAL_BATCH_SIZE=4
+GLOBAL_BATCH_SIZE=32
 
-MICRO_BATCH_DIM=1
-MICRO_BATCH_SIZE=4
+#MICRO_BATCH_DIM=1
+MICRO_BATCH_SIZE=1
 TENSOR_MP_SIZE=1
 DP_SIZE=1
-PIPELINE_MP_SIZE=4
-#PARTITION="24-24"
+PIPELINE_MP_SIZE=16
+PARTITION="3-4-3-4-3-3-3-3-2-3-3-3-2-3-3-3"
 
 echo "NODE_RANK: $NODE_RANK"
 echo "MASTER_ADDR: $MASTER_ADDR"
@@ -47,8 +47,8 @@ MODEL_ARGS="--num-layers 48 \
         --vocab-file $VOCAB_FILE \
         --merge-file $MERGE_FILE \
         --lr-warmup-fraction .01 \
-        --fp16" #\
-        #--balance $PARTITION" 
+        --fp16 \
+        --balance $PARTITION" 
 
 OUTPUT_ARGS="--log-interval 10 \
              --save-interval 100 \

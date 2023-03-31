@@ -13,6 +13,8 @@ from megatron.model.transformer import ParallelTransformer
 from megatron.model.utils import get_linear_layer
 from megatron.model.utils import init_method_normal, scaled_init_method_normal
 
+import time
+
 
 def parallel_lm_logits(input_, word_embeddings_weight, parallel_output,
                        bias=None):
@@ -210,6 +212,9 @@ class Embedding(MegatronModule):
         self.init_method(self.tokentype_embeddings.weight)
 
     def forward(self, input_ids, position_ids, tokentype_ids=None):
+        #torch.cuda.synchronize()
+        #s_time = time.time()
+
         # Embeddings.
         words_embeddings = self.word_embeddings(input_ids)
         position_embeddings = self.position_embeddings(position_ids)
@@ -235,6 +240,11 @@ class Embedding(MegatronModule):
         else:
             embeddings = self.embedding_dropout(embeddings)
 
+        """
+        torch.cuda.synchronize()
+        if torch.distributed.get_rank() == 0:
+            print('Embedding forward time: {}'.format(time.time() - s_time))
+        """
         return embeddings
 
     def state_dict_for_save_checkpoint(self, prefix='', keep_vars=False):
