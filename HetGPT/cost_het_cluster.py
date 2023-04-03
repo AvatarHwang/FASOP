@@ -86,9 +86,9 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
         _layer.append("transformer_layer")
 
     if int(pp.item()) > 1:
-        _layer_extend = ["embedding_layer"]
+        _layer.append("embedding_layer")
     else:
-        _layer.extend(["None"])
+        _layer.append("None")
 
     _num_layer = len(_layer)
 
@@ -341,11 +341,11 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
     cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
         
-    partition, stage_latency = pipe_ast(len(cost_e1), np.asarray(cost_e1), np.asarray(cost_e2), np.asarray(cost_c), int(pp_degree.item()), int(num_mb.item()), N, M, dp_degree)
+    partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst  = pipe_ast(len(cost_e1), np.asarray(cost_e1), np.asarray(cost_e2), np.asarray(cost_c), int(pp_degree.item()), int(num_mb.item()), N, M, dp_degree)
     
     print(f"Step 1 partition: {partition}")
 
-    pipecost_last = pipe_cost(pp_degree, num_mb, stage_latency)       
+    pipecost_last = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)
     # translate to ds form, add data parallelism cost
     ds_partition_last, dp_side_cost_last = dp_cost(config, cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, 
@@ -357,8 +357,8 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
 
     if pp_degree>1:
         while(1):
-            min_latency = min(stage_latency)
-            min_latency_index = stage_latency.index(min_latency)
+            min_latency = min(stage_time_lst)
+            min_latency_index = stage_time_lst.index(min_latency)
             if partition[0] <= 2:
                 break
             partition[min_latency_index] += 1
@@ -371,7 +371,11 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
             # update stage_latency
             stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, M, dp_degree)
 
-            pipecost = pipe_cost(pp_degree, num_mb, stage_latency)       
+            stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
+            stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
+            stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
+
+            pipecost = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)       
             # translate to ds form, add data parallelism cost
             ds_partition, dp_side_cost = dp_cost(config, cluster_info=cluster_info, 
                                 model_config=model_config, parallel_config=parallel_config, 

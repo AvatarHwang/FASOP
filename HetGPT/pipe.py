@@ -6,6 +6,35 @@ import numpy as np
 
 from amp_utils import axis2rank
 
+class Stage:
+
+    def __init__(self):
+        self.comm_time = 0.
+        self.comp_time = 0.
+
+    # def __repr__(self) -> str:
+    #     string = "stage has comp time: " + str(self.set_comp_time)
+    #     string += " stage has comm time: " + str(self.set_comm_time)
+    #     return string
+
+    def set_comp_time(self, comp_time):
+        self.comp_time = comp_time
+
+    def set_comm_time(self, comm_time):
+        self.comm_time = comm_time
+    
+    def get_comp_time(self):
+
+        return self.comp_time
+    
+    def get_comm_time(self):
+        
+        return self.comm_time
+    
+    def get_stage_time(self):
+
+        return self.comm_time+self.comp_time
+
 def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, gpu_per_node, dp_degree):
     time_s = time.time()
 
@@ -26,20 +55,29 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
 
     while(1):
         stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, dp_degree)
+        stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
 
         if pp_degree == 1 or pp_per_node < 1:
             break
             
         # get index of max and value
-        print("stage_latency", stage_latency)
-        last_max_latency = max(stage_latency)
+
+        # print("stage_latency", stage_latency)
+        print("stage_latency", stage_time_lst)
+
+        last_max_latency = max(stage_time_lst)
+        # last_max_latency = max(stage_latency)
 
         if last_max_latency <= max_latency:
             max_latency = last_max_latency
-            max_latency_index = stage_latency.index(max_latency)
+            max_latency_index = stage_time_lst.index(max_latency)
+            # max_latency_index = stage_latency.index(max_latency)
 
-            min_latency = min(stage_latency)
-            min_latency_index = stage_latency.index(min_latency)
+            min_latency = min(stage_time_lst)
+            min_latency_index = stage_time_lst.index(min_latency)
+
+            # min_latency = min(stage_latency)
+            # min_latency_index = stage_latency.index(min_latency)
 
             if partition[max_latency_index] == 1:
                 break
@@ -55,22 +93,39 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
             break
 
     print(f"pipe_ast used {time.time()-time_s} seconds with {num_layer} layers and {pp_degree} stages.")
-    return partition, stage_latency#TODO:stage_comp, stage_comm # stage-1 dim
+    
+    stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
+    stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
+    stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
+
+    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst
+    # return partition, stage_latency#TODO:stage_comp, stage_comm # stage-1 dim
 
 
-def pipe_cost(pp_degree, num_mb, stage_latency):
-    print(f"sum of stage_latency is {sum(stage_latency)}")
+def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst):
 
-    max_latency = max(stage_latency)
-    print(f"max_latency is {max_latency}")
-    cost = (num_mb-1) * max_latency
-    print(f"num_mb is {num_mb}, cost is {cost}")
-    cost += sum(stage_latency)
-    print(f"cost is {cost}")
+    print(f"sum of stage_latency is {sum(stage_time_lst)}")
+    # print(f"stage_comp_time_lst {stage_comp_time_lst}")
+    # print(f"stage_comm_time_lst {stage_comm_time_lst}")
+
+    # max_latency = max(stage_latency)
+    # print(f"max_latency is {max_latency}")
+    # cost = (num_mb-1) * max_latency
+    # print(f"num_mb is {num_mb}, cost is {cost}")
+    # cost += sum(stage_latency)
+    # print(f"cost is {cost}")
 
     # cost = sum(stage_latency)
     # last_stage_latency = stage_latency[-1]
     # cost += (num_mb.item()-1)*last_stage_latency
+    
+    max_latency = max(stage_time_lst)
+    print(f"max_latency is {max_latency}")
+    cost = (num_mb-1) * max_latency
+    print(f"num_mb is {num_mb}, cost is {cost}")
+    cost += sum(stage_time_lst)
+    print(f"cost is {cost}")
+
 
     return cost
 
@@ -148,36 +203,62 @@ def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, part
 
 
 def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, dp_degree):
-    stage_latency = []
+    
+    # stage_latency = []
     num_bw_share = min(gpu_per_node, dp_degree)
     num_stage = len(partition)
+
+    stage_latency = [Stage() for _ in range(num_stage)]
+
     if num_stage==1:
-        return [sum(cost_e2)]
+        stage_latency[0].set_comm_time(sum(cost_e2))
+        return stage_latency
+        # return [sum(cost_e2)]
+    
     for stage in range(num_stage):
         num_layer_til_last_stage = sum(partition[:stage])
         num_layer_til_cur_stage = sum(partition[:stage+1])
         if pp_per_node >=1:
             if stage < pp_per_node:
                 if stage == 0:
-                    stage_latency.append(sum(cost_e1[:partition[0]]))
+                    stage_latency[stage].set_comp_time(sum(cost_e1[:partition[0]]))
+                    # stage_latency.append(sum(cost_e1[:partition[0]]))
                 else:
                     num_layer_til_last_stage = sum(partition[:stage])
                     num_layer_til_cur_stage = sum(partition[:stage+1])
-                    stage_latency.append(sum(cost_e1[num_layer_til_last_stage:num_layer_til_cur_stage]) \
-                                        + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
+                    
+                    stage_latency[stage].set_comp_time(sum(cost_e1[num_layer_til_last_stage:num_layer_til_cur_stage]))
+                    stage_latency[stage].set_comm_time(2*(cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+
+                    # stage_latency.append(sum(cost_e1[num_layer_til_last_stage:num_layer_til_cur_stage]) \
+                    #                     + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
             else:
-                stage_latency.append(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]) \
-                                    + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
+                stage_latency[stage].set_comp_time(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]))
+                stage_latency[stage].set_comm_time(2*(cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+
+                # stage_latency.append(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]) \
+                #                     + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
         else:
-            if num_stage ==1:
-                stage_latency = [max(np.sum(cost_e1), np.sum(cost_e2))]
-            else:
-                stage_latency.append(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage])\
-                                    + 2*cost_c[sum(partition[:stage])][stage-1])
+            # if num_stage ==1:
+            #     stage_latency = [max(np.sum(cost_e1), np.sum(cost_e2))]
+            # else:
+            #     stage_latency.append(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage])\
+            #                         + 2*cost_c[sum(partition[:stage])][stage-1])
+
+            stage_latency[stage].set_comp_time(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]))
+            stage_latency[stage].set_comm_time(cost_c[sum(partition[:stage])][stage-1].item())
+
+        # if stage == num_stage-1:
+        #     # Substract the activation communication cost from the last stage
+        #     # since the backward of the last stage does not need to communicate
+        #     stage_latency[-1] -= cost_c[sum(partition[:stage])][stage-1]
+
         if stage == num_stage-1:
             # Substract the activation communication cost from the last stage
             # since the backward of the last stage does not need to communicate
-            stage_latency[-1] -= cost_c[sum(partition[:stage])][stage-1]
+            stage_comm_time_last = stage_latency[-1].get_comm_time()
+            stage_comm_time_last -= cost_c[sum(partition[:stage])][stage-1].item()
+            stage_latency[-1].set_comm_time(stage_comm_time_last)
 
     return stage_latency
 
