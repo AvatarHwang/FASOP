@@ -8,3 +8,6 @@ AMP
 my-gpt2_text_document_train_*
 image/megatron-latest.sqsh
 __pycache__
+
+distribute-test*
+log-nsys
