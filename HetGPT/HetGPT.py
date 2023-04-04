@@ -42,9 +42,8 @@ cluster_info = {}
 
 # inter-node bandwidth, intra-node bandwidth (in Gbps)
 cluster_info[0] = [torch.tensor([40 * 1e9]).float(), torch.tensor([600 * 8 * 1e9]).float()]
-cluster_info[1] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-cluster_info[2] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-cluster_info[3] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+for i in range(1, num_node):
+    cluster_info[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 8 * 1e9]).float()]
 
 model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
                 "sequence_length": torch.tensor([2048]).float(), 
