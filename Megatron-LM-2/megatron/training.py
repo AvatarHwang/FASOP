@@ -6,6 +6,8 @@ from datetime import datetime
 import math
 import sys
 import time
+
+
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
 global_time =  time.time()
@@ -147,9 +149,9 @@ def pretrain(train_valid_test_dataset_provider,
     iteration = 0
     if args.do_train and args.train_iters > 0:
         iteration = train(forward_step_func,
-                          model, optimizer, opt_param_scheduler,
-                          train_data_iterator, valid_data_iterator,
-                          process_non_loss_data_func)
+                        model, optimizer, opt_param_scheduler,
+                        train_data_iterator, valid_data_iterator,
+                        process_non_loss_data_func)
     print_datetime('after training is done')
 
     if args.do_valid:
@@ -779,13 +781,11 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                     model,
                     optimizer,
                     opt_param_scheduler)
-        
         iteration += 1
         args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
                                     args.micro_batch_size * \
                                     get_num_microbatches()
-
-        # Logging.
+        
         loss_scale = optimizer.get_loss_scale().item()
         params_norm = None
         if args.log_params_norm:
@@ -795,13 +795,10 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                                         iteration, loss_scale,
                                         report_memory_flag, skipped_iter,
                                         grad_norm, params_norm, num_zeros_in_grad)
-
-        # Autoresume
         if args.adlr_autoresume and \
         (iteration % args.adlr_autoresume_interval == 0):
             check_adlr_autoresume_termination(iteration, model, optimizer,
                                             opt_param_scheduler)
-
         # Evaluation
         if args.eval_interval and iteration % args.eval_interval == 0 and \
         args.do_valid:
@@ -810,7 +807,6 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                                     valid_data_iterator, model,
                                     iteration, process_non_loss_data_func,
                                     False)
-
         # Checkpointing
         saved_checkpoint = False
         if args.exit_signal_handler:
@@ -820,13 +816,11 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                                         opt_param_scheduler)
                 print_datetime('exiting program after receiving SIGTERM.')
                 sys.exit()
-
         if args.save and args.save_interval and \
         iteration % args.save_interval == 0:
             save_checkpoint_and_time(iteration, model, optimizer,
                                     opt_param_scheduler)
             saved_checkpoint = True
-
         # Exiting based on duration
         if args.exit_duration_in_mins:
             train_time = (time.time() - _TRAIN_START_TIME) / 60.0
@@ -841,7 +835,6 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                                             opt_param_scheduler)
                 print_datetime('exiting program after {} minutes'.format(train_time))
                 sys.exit()
-
         # Exiting based on iterations
         if args.exit_interval and iteration % args.exit_interval == 0:
             if not saved_checkpoint:
@@ -850,9 +843,8 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
             torch.distributed.barrier()
             print_datetime('exiting program at iteration {}'.format(iteration))
             sys.exit()
-
-
     return iteration
+
 
 
 def evaluate(forward_step_func,
