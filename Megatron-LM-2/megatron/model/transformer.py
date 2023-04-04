@@ -837,14 +837,22 @@ def _get_num_layers(args, is_encoder_and_decoder_model, is_decoder=False):
             assert args.decoder_num_layers % num_ranks_in_decoder == 0, \
                     'decoder_num_layers (%d) must be divisible by number of ranks given to decoder (%d)' % (args.decoder_num_layers, num_ranks_in_decoder)
             if mpu.is_pipeline_stage_before_split():
-                num_layers = (
-                    0
-                    if args.standalone_embedding_stage
-                    and mpu.get_pipeline_model_parallel_rank() == 0 else
-                    args.encoder_num_layers // num_ranks_in_encoder
+                if args.balance :
+                    num_layers = int(args.balance[mpu.get_pipeline_model_parallel_rank()])
+                else:
+                    num_layers = (
+                        0
+                        if args.standalone_embedding_stage
+                        and mpu.get_pipeline_model_parallel_rank() == 0 else
+                        args.encoder_num_layers // num_ranks_in_encoder
                 )
             else:
-                num_layers = args.decoder_num_layers // num_ranks_in_decoder
+                if args.balance :
+                    num_layers = int(args.balance[mpu.get_pipeline_model_parallel_rank()])
+                    print("num_layers", num_layers)
+                else:
+                    num_layers = args.decoder_num_layers // num_ranks_in_decoder
+                    print("num_layers", num_layers)
         else:
             assert args.num_layers == args.encoder_num_layers
             assert args.num_layers % args.transformer_pipeline_model_parallel_size == 0, \
@@ -854,12 +862,17 @@ def _get_num_layers(args, is_encoder_and_decoder_model, is_decoder=False):
             # are divided among pipeline rank >= 1, while on pipeline rank 0,
             # ranks either contain the input embedding layer (virtual pp rank 0),
             # or no layers at all (virtual pp rank >= 1).
-            num_layers = (
-                0
-                if args.standalone_embedding_stage
-                and mpu.get_pipeline_model_parallel_rank() == 0 else
-                args.num_layers // args.transformer_pipeline_model_parallel_size
-            )
+            if args.balance :
+                balance=args.balance.split("-")
+                num_layers = int(balance[mpu.get_pipeline_model_parallel_rank()])
+                print("num_layers", num_layers)
+            else:
+                num_layers = (
+                    0
+                    if args.standalone_embedding_stage
+                    and mpu.get_pipeline_model_parallel_rank() == 0 else
+                    args.num_layers // args.transformer_pipeline_model_parallel_size
+                )
     else:
         if not is_decoder:
             num_layers = args.encoder_num_layers
@@ -1002,7 +1015,13 @@ class ParallelTransformer(MegatronModule):
                     num_ranks_in_enc = args.pipeline_model_parallel_split_rank
                     offset = (pipeline_rank - num_ranks_in_enc) * self.num_layers
             else:
-                offset = mpu.get_pipeline_model_parallel_rank() * self.num_layers
+                if args.balance:
+                    offset = 0
+                    balance = args.balance.split("-")
+                    for i in range(mpu.get_pipeline_model_parallel_rank()):
+                        offset += int(balance[i])
+                else:
+                    offset = mpu.get_pipeline_model_parallel_rank() * self.num_layers
 
         if self.num_layers == 0:
             # When a standalone embedding stage is used (e.g.,

@@ -86,9 +86,9 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
         _layer.append("transformer_layer")
 
     if int(pp.item()) > 1:
-        _layer.append("embedding_layer")
+        _layer_extend = ["embedding_layer"]
     else:
-        _layer.append("None")
+        _layer.extend(["None"])
 
     _num_layer = len(_layer)
 

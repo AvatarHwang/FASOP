@@ -8,7 +8,7 @@ import sys
 import time
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
-start_time = None
+start_time = 0
 bwd_times = []
 exec_times = []
 import torch
@@ -415,16 +415,51 @@ def train_step_profile(forward_step_func, data_iterator,
     def StartTime(self, input):
         global start_time
         torch.cuda.synchronize()
+        #exec_times.append(time.time() - start_time)
         start_time = time.time()
-    def StoreTime(self, input, output):
+    def EndTime(self, input, output):
         global start_time, exec_times
         torch.cuda.synchronize()
         exec_times.append(time.time() - start_time)
 
+    count = 0
+    module_count = 0
     for module in model[0].modules():
-        module.register_forward_pre_hook(StartTime)
-        module.register_forward_hook(StoreTime)
+        if mpu.get_pipeline_model_parallel_world_size() == 1:
+            if count==5:
+                module.register_forward_pre_hook(StartTime)
+            if count==6:
+                module.register_forward_hook(EndTime)
+                module_count += 1
+            if (count+2) % 12 == 0:
+                module.register_forward_pre_hook(StartTime)
+                module.register_forward_hook(EndTime)
+                module_count += 1
+        else:
+            if mpu.get_pipeline_model_parallel_rank() == 0:
+                if count==5:
+                    module.register_forward_pre_hook(StartTime)
+                if count==6:
+                    module.register_forward_hook(EndTime)
+                    module_count += 1
+                if (count+2) % 12 == 0:
+                    module.register_forward_pre_hook(StartTime)
+                    module.register_forward_hook(EndTime)
+                    module_count += 1
+            else:
+                if (count + 6) % 12 == 0:
+                    module.register_forward_pre_hook(StartTime)
+                    module.register_forward_hook(EndTime)
+                    module_count += 1
+        count += 1
     
+    """
+    for module in model[0].modules():
+        if count==1:
+            module.register_forward_hook(EndTime)
+        count -= 1
+    """
+
     forward_backward_func = get_forward_backward_func()
     fwd_bwd_timers = timers if args.timing_log_level > 1 else None
     losses_reduced = forward_backward_func(
@@ -433,26 +468,59 @@ def train_step_profile(forward_step_func, data_iterator,
     timers('forward-backward').stop()
 
     module_time=[]
+    for i, t in zip(range(module_count), exec_times):
+        module_time.append(t)
+    if mpu.get_pipeline_model_parallel_world_size() > 1:
+        if mpu.get_pipeline_model_parallel_rank() > 0:
+            # remove recv.wait time
+            module_time[0] = sum(module_time[1:])/len(module_time[1:])
+    print(module_time)
+
+    """
+    del exec_times[0]
 
     for module, t in zip(model[0].modules(), exec_times):
         module_time.append(t)
+        #if mpu.get_pipeline_model_parallel_rank() == 1:
+            #print(f"{module.__class__}: {t}")
         #print(f"{module.__class__}: {t}")
 
-    print(f"Total time: {sum(module_time)}")
+    #print(f"Total time: {sum(module_time)}")
 
     # insert 0 for the first module
-    module_time.insert(0, 0)
-    module_time.insert(0, 0)
+    #module_time[0]=0
+    
+    if mpu.get_pipeline_model_parallel_rank() == 0:
+        module_time.insert(0, 0)
+        module_time.insert(0, 0)
+    else:
+        # delete the first 6 modules which contains wait time
+        del module_time[0]
+        del module_time[0]
+        del module_time[0]
+        del module_time[0]
+        del module_time[0]
+        del module_time[0]
+        # change the third module to 15th, since the 3rd module including wait time
+        module_time[3] = module_time[15]
+        # delete the 2nd last module, since it contains wait time if it's the last stage
+        if mpu.is_pipeline_last_stage(ignore_virtual=True):
+            module_time[-14]=0
+            del module_time[-2]
 
     layer_time = []
     # layer time is sum of 12 modules
     for i in range(0, len(module_time), 12):
         layer_time.append(sum(module_time[i:i+12]))  
+        #layer_time.append(module_time[i])
 
     for i in range(len(layer_time)):
-        layer_time[i] = layer_time[i]*354.9/910.5 # Profile overhead is considered
+        layer_time[i] = layer_time[i]
 
     print(f"Layer time: {layer_time}")
+    if mpu.get_pipeline_model_parallel_rank() == 0:
+        print("layer end")
+    """
 
     # Empty unused memory.
     if args.empty_unused_memory_level >= 1:
