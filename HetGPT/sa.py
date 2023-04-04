@@ -338,6 +338,9 @@ def amp_no_placement_strategy(M, N, gbs, known):
             remain = M*N // h
             for w in factor(remain): # dp
                 assert gbs % w == 0
+                pp_degree = M*N // (h*w)
+                if pp_degree > 48: #TODO: args.num_layers
+                    continue
                 for mbs in factor(gbs // w):
                     ele_count += 1
                     known[mbs].append((h, w))
