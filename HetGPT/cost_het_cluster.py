@@ -247,7 +247,7 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         if layer_type == "embedding_layer":
             if not counted:
                 counted = True
-                param_count += 164249600
+                param_count += 164_249_600
         elif layer_type == "transformer_layer":
             param_count += 24 * h ** 2 / mp
             param_count += 3200 * 2 /mp
