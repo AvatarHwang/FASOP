@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --nodes=4
+#SBATCH --nodes=12
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu2
 #SBATCH --gres=gpu:a10:4
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=12
 #SBATCH -o ./log2/%j.sbatch.%N.out         
 #SBATCH -e ./log2/%j.sbatch.%N.err         
 
@@ -22,10 +22,12 @@ echo $MASTER_ADDR
 ENROOT_SCRIPT=$(cat <<EOF
 CONTAINER_PATH="/scratch/enroot/\$UID/data/megatron-latest"
 
+# rm -rf /scratch/enroot/\$UID/data/megatron-latest
+
 if [ -d "\$CONTAINER_PATH" ] ; then 
     echo "container exist";
 else
-    enroot create \$HOME/tdpp/image/megatron-latest.sqsh ;
+    enroot create -n megatron-latest \$HOME/tdpp/image/megatron-latest2.sqsh ;
 fi
 
 NODE_LIST=\`scontrol show hostnames \$SLURM_JOB_NODELIST\`
@@ -51,7 +53,7 @@ EOF
 
 srun --partition=$SLURM_JOB_PARTITION \
       --gres=$GRES \
-      --cpus-per-task=10 \
+      --cpus-per-task=12 \
       -o ./log2/%j/%N.out \
       -e ./log2/%j/%N.err \
       bash -c "$ENROOT_SCRIPT $MASTER_ADDR\" " 
