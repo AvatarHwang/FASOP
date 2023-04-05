@@ -250,7 +250,7 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
                 # word embedding: h * v
                 param_count += ((h * v)+(h * s)) / mp # num of embedding layer is just h * v. not 164249600
         elif layer_type == "transformer_layer":
-            param_count += ((12 * h ** 2)+(20,800)) / mp # num of transformer layer is 12 * h ** 2. not 24 * h ** 2
+            param_count += ((12 * h ** 2)+(20800)) / mp # num of transformer layer is 12 * h ** 2. not 24 * h ** 2
             # param_count += 3200 * 2 /mp
     
     # get slowest of bandwidth
