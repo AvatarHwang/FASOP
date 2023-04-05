@@ -12,18 +12,20 @@ from cost_het_cluster import HetGPT
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--gbs", type=int, default=32)
+parser.add_argument("--gbs", type=int, default=64)
 parser.add_argument("--exp_name", type=str, default="het_cluster")
 parser.add_argument("--model_config", type=str, default="gpt2XL")
 parser.add_argument("--hidden_size", type=int, default=1600)
 parser.add_argument("--sequence_length", type=int, default=2048)
 parser.add_argument("--num_layers", type=int, default=48)
-parser.add_argument("--vocab_size", type=int, default=51200)
+parser.add_argument("--vocab_size", type=int, default=50257)
 parser.add_argument("--type", type=str, default="gpt2XL")
 parser.add_argument("--gpu_per_node", type=int, default=4)
-parser.add_argument("--num_node", type=int, default=4)
+parser.add_argument("--num_node", type=int, default=16)
 parser.add_argument("--num_attention_heads", type=int, default=16)
-# TODO: add fp16 args
+parser.add_argument("--precision", type=int, default=16)
+
+# TODO: add fp16 args -> egi: done
 args = parser.parse_args()
 
 # cluster information
@@ -50,7 +52,8 @@ model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(),
                 "num_layers": torch.tensor([48]).float(), 
                 "vocab_size":torch.tensor([51200]).float(),
                 "num_attention_heads": torch.tensor([16]).float(),
-                "type":args.type}
+                "type":args.type,
+                "precision":torch.tensor([int(args.precision)]).float()} # egi: add precision argument
 
 config_h = int((model_config["hidden_size"]).item())
 config_n = int(model_config["num_layers"].item())
@@ -102,6 +105,19 @@ while True:
 print(f"Finished {time.time() - time_s}")
 
 sorted_settings = sorted(want_simulate, key = lambda kv: kv[1])
+
+# TODO:egi add. using pandas make clean data.
+# import pandas as pd
+# pd.set_option("display.max_columns",None)
+# pd.set_option("display.max_rows",None)
+# print(type(sorted_settings[0][0]))
+# df = pd.DataFrame(sorted_settings)
+# column_name = ["mbs","tp","dp","pp","partition","total_latency","comp","comm","embedding_comm"]
+# a = list(lambda i : for i in sorted_settings[i])
+# print(a)
+
+# print(df)
+                  
 with open(record_file, "a") as fp:
     for item in sorted_settings:
         fp.write(f"rank {sorted_settings.index(item)}: {item}")
