@@ -48,6 +48,8 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
     max_latency = 1000000
     for i in range(pp_degree):
         partition.append(num_balanced_layer)
+    if pp_degree == 32:
+        partition = [1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2]
     partition[0] += 1
     partition[-1] += 1
 

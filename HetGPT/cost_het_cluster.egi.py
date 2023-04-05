@@ -247,10 +247,10 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         if layer_type == "embedding_layer":
             if not counted:
                 counted = True
-                param_count += 164_249_600
+                param_count += h * v / mp # num of embedding layer is just h * v. not 164249600
         elif layer_type == "transformer_layer":
-            param_count += 24 * h ** 2 / mp
-            param_count += 3200 * 2 /mp
+            param_count += 12 * h ** 2 / mp # num of transformer layer is 12 * h ** 2. not 24 * h ** 2
+            # param_count += 3200 * 2 /mp
     
     # Get communication bandwidth of pipeline stage 0
     for j in range(int(mp.item())):
@@ -400,11 +400,11 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
     
 
 def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
-    hidden_size = model_config["hidden_size"]
+    h = model_config["hidden_size"] # egi: modified variable name for code unifying, hidden size -> h
     v = model_config["vocab_size"]
     seq_len = model_config["sequence_length"]
     num_head = model_config["num_attention_heads"]
-    tp_degree = parallel_config["mp"]
+    tp_degree = parallel_config["mp"] # egi: modified variable name for code unifying , tp_degree -> mp
     mbs = parallel_config["micro_bs"]
     param_count = []
     activation_memory = []
@@ -417,14 +417,14 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
         pipeline_buffer = 0
         for i in range(stage):
             if layer_type[i] == "embedding_layer":
-                param += 164249600
-                avtivation += mbs * seq_len * hidden_size
+                param += h * v / mp # 164249600
+                avtivation += mbs * seq_len * h
             elif layer_type[i] == "transformer_layer":
-                param += 24 * hidden_size ** 2 / tp_degree
-                param += 3200 * 2 # LayerNorm
-                avtivation += 9 * mbs * seq_len * hidden_size + mbs * seq_len ** 2 * num_head # reference: https://arxiv.org/pdf/2110.05722.pdf
+                param += 12 * h ** 2 / mp # 24 * h ** 2
+                # param += 3200 * 2 # LayerNorm
+                avtivation += 9 * mbs * seq_len * h + mbs * seq_len ** 2 * num_head # reference: https://arxiv.org/pdf/2110.05722.pdf
                 if i == 0:
-                    pipeline_buffer += mbs * seq_len * hidden_size # BLH
+                    pipeline_buffer += mbs * seq_len * h # BLH
             else:
                 pass
             layer_index += 1
