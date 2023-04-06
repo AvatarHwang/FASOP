@@ -38,70 +38,108 @@ dir_path = os.path.join(home_path, 'tdpp/HetGPT/main_logs')
 if not os.path.exists(dir_path):
     os.mkdir(dir_path)
 
-cluster_info = {}
+cluster_info0 = {} # a100:4 + a10:4     2 x nodes
+cluster_info1 = {} # a10:8              2 x nodes
+cluster_info2 = {} # a100:4 + a10:12    4 x nodes
+cluster_info3 = {} # a10:16             4 x nodes
+cluster_info4 = {} # a100:4 : a10:28    8 x nodes
 
-# inter-node bandwidth, intra-node bandwidth (in Gbps)
-cluster_info[0] = [torch.tensor([40 * 1e9]).float(), torch.tensor([600 * 1e9]).float()]
-for i in range(1, num_node):
-    cluster_info[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+# get all possible combinations of clusters, but append only not duplicated ones
+cluster_info0[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
+cluster_info0[1] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
-model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
-                "sequence_length": torch.tensor([2048]).float(), 
-                "num_layers": torch.tensor([48]).float(), 
-                "vocab_size":torch.tensor([51200]).float(),
-                "num_attention_heads": torch.tensor([16]).float(),
-                "type":args.type}
+cluster_info1[0] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+cluster_info1[1] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
-config_h = int((model_config["hidden_size"]).item())
-config_n = int(model_config["num_layers"].item())
-time_stamp = int(time.time())
-exp_name = f"het_cluster"
-record_file = f"{os.path.join(dir_path, exp_name)}_{time_stamp}.txt"
+cluster_info2[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
+cluster_info2[1] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+cluster_info2[2] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+cluster_info2[3] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
-# remove cache directory from last run
-if os.path.exists(os.path.join(home_path, "tmp")):
-    for root, dirs, files in os.walk(os.path.join(home_path, "tmp")):
-        for f in files:
-            os.unlink(os.path.join(root, f))
+for i in range(4):
+    cluster_info3[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
-# save this name to env
-os.environ["amp_log_path"] = record_file
+cluster_info4[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
+for i in range(1, 8):
+    cluster_info4[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+
+cluster_combinations = [cluster_info0, cluster_info1, cluster_info2, cluster_info3, cluster_info4]
+want_simulate = [] 
+
+for cluster_info in cluster_combinations:
+    num_node = len(cluster_info)
+    gpu_of_cluster = []
+    for i in range(num_node):
+        if cluster_info[i][1] == torch.tensor([4800 * 1e9]).float():
+            gpu_of_cluster.append('A100')
+        else:
+            gpu_of_cluster.append('A10')
+
+    model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
+                    "sequence_length": torch.tensor([2048]).float(), 
+                    "num_layers": torch.tensor([48]).float(), 
+                    "vocab_size":torch.tensor([51200]).float(),
+                    "num_attention_heads": torch.tensor([16]).float(),
+                    "type":args.type}
+
+    config_h = int((model_config["hidden_size"]).item())
+    config_n = int(model_config["num_layers"].item())
+    time_stamp = int(time.time())
+    exp_name = f"het_cluster"
+    record_file = f"{os.path.join(dir_path, exp_name)}_{time_stamp}.txt"
+
+    # remove cache directory from last run
+    if os.path.exists(os.path.join(home_path, "tmp")):
+        for root, dirs, files in os.walk(os.path.join(home_path, "tmp")):
+            for f in files:
+                os.unlink(os.path.join(root, f))
+
+    # save this name to env
+    os.environ["amp_log_path"] = record_file
 
 gbs = int(args.gbs)
 model = HetGPT(model_config, exp_name)
 assert (gbs % gpu_per_node == 0) and (gbs % num_node == 0), "global batch size is too irrgular"
 
-want_simulate = [] 
-feasible = {}
+    #want_simulate = [] 
 
-with open(record_file, "a") as fp:
-    fp.write(f"{model_config}\n")                
-    fp.write(f"gbs:{gbs}\n")                
-known = None
+    with open(record_file, "a") as fp:
+        fp.write(f"{model_config}\n")                
+        fp.write(f"gbs:{gbs}\n")                
+    known = None
 
-# Estimating best configurations
-while True:
-    ret = amp_no_placement_strategy(M=gpu_per_node, N=num_node, gbs=gbs, known=known)
-    if ret is None:
-        break
-    else:
-        h, w, mbs, known = ret
-        parallel_dim = {"tp_deg": torch.ones(1,)*h, "dp_deg": torch.ones(1,)*w, "pp_deg": torch.ones(1,)*(gpu_per_node*num_node/(h*w))}
-        fake_config = np.ones((gpu_per_node,num_node)) * (-1)
-        model_args = (fake_config, gbs, mbs, cluster_info, model_config, parallel_dim)    
+    # Estimating best configurations
+    while True:
+        ret = amp_no_placement_strategy(M=gpu_per_node, N=num_node, gbs=gbs, known=known)
+        if ret is None:
+            break
+        else:
+            h, w, mbs, known = ret
+            parallel_dim = {"tp_deg": torch.ones(1,)*h, "dp_deg": torch.ones(1,)*w, "pp_deg": torch.ones(1,)*(gpu_per_node*num_node/(h*w))}
+            fake_config = np.ones((gpu_per_node,num_node)) * (-1)
+            model_args = (fake_config, gbs, mbs, cluster_info, model_config, parallel_dim)    
 
-        with torch.no_grad():
-            oom_flag, rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost = model(model_args)
-        
-        
-        for k in parallel_dim:
-            parallel_dim[k] = int(parallel_dim[k].item())
+            with torch.no_grad():
+                oom_flag, rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost = model(model_args)
+            
+            
+            for k in parallel_dim:
+                parallel_dim[k] = int(parallel_dim[k].item())
 
-        want_simulate.append(((mbs, parallel_dim, rank_map, partition), cost.item(), pipecost.item(), dp_side_cost.item(), all_reduce_embedding_cost, oom_flag))
+            if cluster_info[0][1] == torch.tensor([4800 * 1e9]).float():
+                price_per_s_1 = 32.7726 / 3600
+            else:
+                price_per_s_1 = 5.672 / 3600
+            price_per_s_2 = 5.672 / 3600
+
+            price_per_s = price_per_s_1 + price_per_s_2 * (num_node - 1)
+            price_per_step = price_per_s * cost.item() # price per second * second per step 
+
+            want_simulate.append((mbs,'*', parallel_dim,'*', gpu_of_cluster,'*', partition,'*', cost.item(),'*', pipecost.item(),'*', dp_side_cost.item(),'*', all_reduce_embedding_cost,'*', price_per_step))
 
 print(f"Finished {time.time() - time_s}")
 
-sorted_settings = sorted(want_simulate, key = lambda kv: kv[1])
+sorted_settings = sorted(want_simulate, key = lambda kv: kv[-1])
 with open(record_file, "a") as fp:
     for item in sorted_settings:
         fp.write(f"rank {sorted_settings.index(item)}: {item}")
