@@ -346,3 +346,11 @@ class PPGroup:
         stage_time_0 = self.stage_time_lst[0]
         pipe_cost = stage_time_0.get_back_compute_end_time_lst_elem(self.num_mb-1)
         return pipe_cost
+    
+    def get_stagewise_end_time_lst(self):
+        stage_wise_end_time_lst = []
+        for i in range(self.pp_degree):
+            stage_time = self.stage_time_lst[i]
+            last_comp_time = stage_time.get_back_compute_end_time_lst_elem(self.num_mb-1)
+            stage_wise_end_time_lst.append(last_comp_time)
+        return stage_wise_end_time_lst
