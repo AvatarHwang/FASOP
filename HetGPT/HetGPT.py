@@ -63,7 +63,7 @@ cluster_combinations = [cluster_info0, cluster_info1, cluster_info2, cluster_inf
 want_simulate = [] 
 
 for cluster_info in cluster_combinations:
-    num_node = len(cluster_info)
+    num_node = len(cluster_info.keys())
     gpu_of_cluster = []
     for i in range(num_node):
         if cluster_info[i][1] == torch.tensor([4800 * 1e9]).float():
