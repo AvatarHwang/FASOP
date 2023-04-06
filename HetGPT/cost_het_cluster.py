@@ -225,10 +225,11 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     _layer = ["embedding_layer"]
     for i in range(int(n.item())):
         _layer.append("transformer_layer")
-    if pp>1:
-        _layer.extend(["embedding_layer"])    
-    else:
-        _layer.extend(["None"])
+    # if pp>1:
+    #     _layer.extend(["embedding_layer"])    
+    # else:
+    #     _layer.extend(["None"])
+    _layer.extend(["noop"]) # it's matching the num of layers, which is 50.
     _num_layer = len(_layer)
         
     # First translate to deepspeed partition form
@@ -240,7 +241,9 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     assert len(ds_partition) == pp + 1
 
     counted = False
-    param_count = 0    
+    param_count = torch.zeros(1,)
+    print(f"dp_partition 0: {ds_partition[0]}, dp_partition 1: {ds_partition[1]} {range(ds_partition[0], ds_partition[1])}")
+    
     for layer_id in range(ds_partition[0], ds_partition[1]):
         layer_type = _layer[layer_id]
         if layer_type == "embedding_layer":
@@ -248,11 +251,12 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
                 counted = True
                 # positional embedding: h * s
                 # word embedding: h * v
-                param_count += ((h * v)+(h * s)) / mp # num of embedding layer is just h * v. not 164249600
+                param_count += (h * v) / mp # num of embedding layer is just h * v. not 164249600
         elif layer_type == "transformer_layer":
             param_count += ((12 * h ** 2)+(20800)) / mp # num of transformer layer is 12 * h ** 2. not 24 * h ** 2
             # param_count += 3200 * 2 /mp
     
+    print(f"tp, dp, pp [{mp},{dp},{pp}] the num of param {param_count}")
     # get slowest of bandwidth
     for j in range(int(mp.item())):
         bandwidth = []
@@ -433,20 +437,20 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
         activation_memory.append(avtivation * 16 / 8 / 1024 / 1024 / 1024)
         pipeline_buffer_memory.append(pipeline_buffer * 16 / 8 / 1024 / 1024 / 1024)
 
-    # get peak memory
-    peak_memory = []
-    for i in range(len(partition)):
-        peak_memory.append(param_count[i] + activation_memory[i] + pipeline_buffer_memory[i])
-    peak_memory = max(peak_memory)
+    # # get peak memory
+    # peak_memory = []
+    # for i in range(len(partition)):
+    #     peak_memory.append(param_count[i] + activation_memory[i] + pipeline_buffer_memory[i])
+    # peak_memory = max(peak_memory)
 
-    gpu_memory = 24 #TODO: get gpu memory from args
-    if peak_memory > gpu_memory:
-        print(f"peak memory is larger than gpu memory. MBS: {mbs.item()}, TP: {mp.item()}, PP: {parallel_config['pp'].item()}, partition: {partition}")
-        print(f"peak memory is {peak_memory} GB")
-        return False
-    else:
-        print("peak memory is smaller than gpu memory")
-        print(f"peak memory is {peak_memory} GB")
-        return True
+    # gpu_memory = 24 #TODO: get gpu memory from args
+    # if peak_memory > gpu_memory:
+    #     print(f"peak memory is larger than gpu memory. MBS: {mbs.item()}, TP: {mp.item()}, PP: {parallel_config['pp'].item()}, partition: {partition}")
+    #     print(f"peak memory is {peak_memory} GB")
+    #     return False
+    # else:
+    #     print("peak memory is smaller than gpu memory")
+    #     print(f"peak memory is {peak_memory} GB")
+    #     return True
 
             
