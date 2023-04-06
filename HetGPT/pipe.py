@@ -124,7 +124,7 @@ def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage
         ppgroup_cfg["pp_degree"] = pp_degree
 
     if ppgroup_cfg["pp_degree"] == 1:
-        cost = sum(stage_comp_time_lst)
+        cost = num_mb * sum(stage_comp_time_lst)
 
     else:    
         my_pp_group = PPGroup(**ppgroup_cfg)

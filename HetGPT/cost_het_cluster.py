@@ -40,14 +40,14 @@ class HetGPT(nn.Module):
             if self.cluster_info0[1] == torch.tensor([4800 * 1e9]).float():
                 known_record = f"known_cost/{self.model_type}_A100_{mp_size}" 
                 cur_profile_cost1 = 3 * np.load(f"{known_record}.npy")
-                cur_profile_cost1 = np.append(cur_profile_cost1, cur_profile_cost1[0])
+                cur_profile_cost1 = np.append(cur_profile_cost1, 0)
             else:
                 known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
                 cur_profile_cost1 = 3 * np.load(f"{known_record}.npy")
-                cur_profile_cost1 = np.append(cur_profile_cost1, cur_profile_cost1[0])
+                cur_profile_cost1 = np.append(cur_profile_cost1, 0)
             known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
             cur_profile_cost2 = 3 * np.load(f"{known_record}.npy")
-            cur_profile_cost2 = np.append(cur_profile_cost2, cur_profile_cost2[0])
+            cur_profile_cost2 = np.append(cur_profile_cost2, 0)
 
             self.profile_cost1[str(mp_size)] = cur_profile_cost1
             self.profile_cost2[str(mp_size)] = cur_profile_cost2
@@ -211,7 +211,7 @@ def cost_all_reduce_embedding(model_config, cluster_info, parallel_config, gpu_p
         # if dp_degree<gpu_per_node, we assume the bandwidth is shared by all dp_degree
         # else, we assume the bandwidth is shared by all gpu_per_node
         band_width = slowest_bandwidth/min(dp_degree, gpu_per_node) 
-        embedding_syn_cost = 2*(2-1)*(hidden_size*vocab_size*precision)/(2*band_width) #TODO: caculate the size of embedding, TODO: clearify if we should divide by tp_degree
+        embedding_syn_cost = 2*(2-1)*(hidden_size*vocab_size*precision)/(2*band_width)/tp_degree #TODO: caculate the size of embedding, TODO: clearify if we should divide by tp_degree
         return embedding_syn_cost
     else:
         return 0
@@ -229,16 +229,14 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     mp = parallel_config["mp"]
     dp = parallel_config["dp"]
     pp = parallel_config["pp"]
-    precision = model_config["precision"]
     
     _layer = ["embedding_layer"]
     for i in range(int(n.item())):
         _layer.append("transformer_layer")
-    # if pp>1:
-    #     _layer.extend(["embedding_layer"])    
-    # else:
-    #     _layer.extend(["None"])
-    _layer.extend(["None"])
+    if pp>1:
+        _layer.extend(["embedding_layer"])    
+    else:
+        _layer.extend(["None"])
     _num_layer = len(_layer)
         
     # First translate to deepspeed partition form
@@ -247,14 +245,24 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         ds_partition.append(ds_partition[-1]+partition[i])
     assert ds_partition[-1] == _num_layer
     assert len(ds_partition) == pp + 1
-    
-    # Get communication time list for pp stage 
-    dp_cost_for_stage = []
 
+    counted = False
+    param_count = 0    
+    for layer_id in range(ds_partition[0], ds_partition[1]):
+        layer_type = _layer[layer_id]
+        if layer_type == "embedding_layer":
+            if not counted:
+                counted = True
+                param_count += 164_249_600
+        elif layer_type == "transformer_layer":
+            param_count += 24 * h ** 2 / mp
+            param_count += 3200 * 2 /mp
+    
+    # Get communication bandwidth of pipeline stage 0
+    dp_cost_list = []
     for i in range(int(pp.item())):
         for j in range(int(mp.item())):
             bandwidth = []
-            # get slowest of bandwidth
             for k in range(int(dp.item())):
                 rank_cur = axis2rank(axis=(0,k,j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
                 node_cur = rank_node_map[int(rank_cur.item())]
@@ -266,28 +274,13 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
                 else:
                     connectivity = min(cluster_info[node_cur][0], cluster_info[node_next][0])
                 bandwidth.append(connectivity)
-                
-            # get slowest of bandwidth
-            bandwidth = min(bandwidth)                
-            param_count = 0                 
-            counted = False             
-                            
-            for layer_id in range(ds_partition[i], ds_partition[i+1]):
-                layer_type = _layer[layer_id]
-                if layer_type == "embedding_layer":
-                    if not counted:
-                        counted = True
-                        param_count += (h*v) / mp
-                elif layer_type == "transformer_layer":
-                    param_count += ((12*h**2)+20800) / mp
-            # All-reduce cost: 2(n-1)M / nB              
-            dp_cost = 2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth)
-            
-        dp_cost_for_stage.append(dp_cost)
-        # print(f"pp, tp, dp - {pp, mp, dp} pp stage: {i} bw: {bandwidth} dp_cost: {param_count, dp_cost}")
-    # print(dp_cost_for_stage)
-    
-    return ds_partition, dp_cost_for_stage
+        # get slowest of bandwidth
+        bandwidth = min(bandwidth)
+
+        # All-reduce cost: 2(n-1)M / nB
+        precision = 16 #TODO: precision should be args.precision
+        dp_cost_list.append(2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth))
+    return ds_partition, dp_cost_list
 
 def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
     L = model_config["num_layers"]
@@ -341,8 +334,6 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
                 rank_node_map[int((rank_counter[cur_pp] + cur_pp * tp_degree * dp_degree).item())] = j
                 rank_counter[cur_pp] += 1
             
-    # infer number of micro-batch size B
-    # mbs = gbs / dp
     num_mb = gbs / (dp_degree * mbs)
     mbs = gbs / (dp_degree * num_mb)
             
@@ -356,8 +347,6 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
         
     partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst  = pipe_ast(len(cost_e1), np.asarray(cost_e1), np.asarray(cost_e2), np.asarray(cost_c), int(pp_degree.item()), int(num_mb.item()), N, M, dp_degree)
-    
-    print(f"Step 1 partition: {partition}")
 
     pipecost_last, stage_wise_cost_lst = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)
     # translate to ds form, add data parallelism cost
@@ -367,21 +356,27 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
     
     all_reduce_embedding_cost = cost_all_reduce_embedding(model_config, cluster_info, parallel_config, M)
 
-    max1=0
+    end2end_stage_latency=[]
     for i in range(len(stage_wise_cost_lst)):
-        if max1 < stage_wise_cost_lst[i] + dp_cost_list[i]:
-            max1 = stage_wise_cost_lst[i] + dp_cost_list[i]
-            dp_side_cost_last = dp_cost_list[i]
-    cost_last = max1 + all_reduce_embedding_cost
+        end2end_stage_latency.append(stage_wise_cost_lst[i] + dp_cost_list[i])
+    cost_last = max(end2end_stage_latency) + all_reduce_embedding_cost
+
+    max_latency = max(end2end_stage_latency)
+    max_latency_index = end2end_stage_latency.index(max_latency)
+    dp_side_cost_last = dp_cost_list[max_latency_index]
 
     if pp_degree>1:
         while(1):
-            min_latency = min(stage_time_lst)
-            min_latency_index = stage_time_lst.index(min_latency)
+            # get min stage latency and its index
+            min_latency = min(end2end_stage_latency)
+            min_latency_index = end2end_stage_latency.index(min_latency)
+            # get max stage latency and its index
+            max_latency = max(end2end_stage_latency)
+            max_latency_index = end2end_stage_latency.index(max_latency)
             if partition[0] <= 2:
                 break
             partition[min_latency_index] += 1
-            partition[0] -= 1
+            partition[max_latency_index] -= 1
 
             # update stage_latency
             pp_degree = int(pp_degree)
@@ -399,24 +394,23 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
             ds_partition, dp_side_cost = dp_cost(config, cluster_info=cluster_info, 
                                 model_config=model_config, parallel_config=parallel_config, 
                                 amp_config=amp_config, partition=partition)
-            max1=0
+            
+            # get end2end_stage_latency after fine-tuning
+            end2end_stage_latency=[]
             for i in range(len(stage_wise_cost_lst)):
-                if max1 < stage_wise_cost_lst[i] + dp_cost_list[i]:
-                    max1 = stage_wise_cost_lst[i] + dp_cost_list[i]
-                    dp_side_cost_last = dp_cost_list[i]
-            cost_current = max1 + all_reduce_embedding_cost
-            print("HetGPT changed partition: ", partition, "cost: ", cost_current.item(), "cost_last: ", cost_last.item())
+                end2end_stage_latency.append(stage_wise_cost_lst[i] + dp_cost_list[i])
+            cost_current = max(end2end_stage_latency) + all_reduce_embedding_cost
+            new_max_latency = max(end2end_stage_latency)
+            new_max_latency_index = end2end_stage_latency.index(new_max_latency)
+            dp_side_cost_last = dp_cost_list[new_max_latency_index] 
             if cost_current < cost_last:
                 ds_partition_last = ds_partition
                 pipecost_last = pipecost
                 dp_side_cost_last = dp_side_cost
                 cost_last = cost_current
-                print("continue to change partition")
             else:
-                print("Total latency increased, revert to previous partition.")
                 partition[min_latency_index] -= 1
-                partition[0] += 1
-                print("HetGPT reverted partition: ", partition, "cost: ", cost_current.item(), "cost_last: ", cost_last.item())
+                partition[max_latency_index] += 1
                 break
     #oom_flag = EstimatePeakMemory(partition, model_config, parallel_config, layer_type)
 
