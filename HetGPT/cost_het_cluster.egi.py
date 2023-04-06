@@ -26,11 +26,9 @@ class HetGPT(nn.Module):
         n = float(self.model_config["num_layers"].item())
         s = float(self.model_config["sequence_length"].item())
         v = float(self.model_config["vocab_size"].item())
- 
+        p = int(self.model_config["precision"].item())
         config_h = int((self.model_config["hidden_size"]).item())
         config_n = int(n)
-
-        
 
         self.profile_cost1 = {}
         self.profile_cost2 = {}
@@ -78,9 +76,7 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
     mp = parallel_config["mp"]
     dp = parallel_config["dp"]
     pp = parallel_config["pp"]
-    
-    precision = 16 # TODO: support fp32, should be args.precision
-
+    precision = model_config["precision"] # add precision argument
     _layer = ["embedding_layer"]
     for i in range(int(n.item())):
         _layer.append("transformer_layer")
@@ -175,7 +171,7 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost):
     return cost_e
 
 def cost_all_reduce_embedding(model_config, cluster_info, parallel_config, gpu_per_node):
-    precision = 16 # TODO: support fp32, should be args.precision
+    # precision = 32 # TODO: support fp32, should be args.precision
     tp_degree = int(parallel_config["mp"].item())
     dp_degree = int(parallel_config["dp"].item())
     pp_degree = int(parallel_config["pp"].item())
@@ -183,6 +179,7 @@ def cost_all_reduce_embedding(model_config, cluster_info, parallel_config, gpu_p
     rank_node_map = parallel_config["rank_node_map"]
     hidden_size = int(model_config["hidden_size"].item())
     vocab_size = int(model_config["vocab_size"].item())
+    precision = int(model_config["precision"].item()) # add precision argument
 
     if pp_degree>1:
         # Get communication bandwidth between pipeline stage 0 and -1
@@ -223,6 +220,7 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     mp = parallel_config["mp"]
     dp = parallel_config["dp"]
     pp = parallel_config["pp"]
+    precision = model_config["precision"] # add precision argument
     
     _layer = ["embedding_layer"]
     for i in range(int(n.item())):
@@ -231,12 +229,14 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         _layer.extend(["embedding_layer"])    
     else:
         _layer.extend(["None"])
+    
     _num_layer = len(_layer)
         
     # First translate to deepspeed partition form
     ds_partition = [0]
     for i in range(len(partition)):
         ds_partition.append(ds_partition[-1]+partition[i])
+    
     assert ds_partition[-1] == _num_layer
     assert len(ds_partition) == pp + 1
 
@@ -247,12 +247,14 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         if layer_type == "embedding_layer":
             if not counted:
                 counted = True
-                param_count += h * v / mp # num of embedding layer is just h * v. not 164249600
+                # positional embedding: h * s
+                # word embedding: h * v
+                param_count += ((h * v)) / mp # num of embedding layer is just h * v. not 164249600
         elif layer_type == "transformer_layer":
-            param_count += 12 * h ** 2 / mp # num of transformer layer is 12 * h ** 2. not 24 * h ** 2
+            param_count += ((12 * h ** 2)+(20800)) / mp # num of transformer layer is 12 * h ** 2. not 24 * h ** 2
             # param_count += 3200 * 2 /mp
     
-    # Get communication bandwidth of pipeline stage 0
+    # get slowest of bandwidth
     for j in range(int(mp.item())):
         bandwidth = []
         for k in range(int(dp.item())):
@@ -266,11 +268,11 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
             else:
                 connectivity = min(cluster_info[node_cur][0], cluster_info[node_next][0])
             bandwidth.append(connectivity)
-    # get slowest of bandwidth
+
     bandwidth = min(bandwidth)
 
     # All-reduce cost: 2(n-1)M / nB
-    precision = 32 #TODO: precision should be args.precision
+    # precision = 32 #TODO: precision should be args.precision
     dp_cost = 2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth)
                 
     return ds_partition, dp_cost
@@ -404,7 +406,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
     v = model_config["vocab_size"]
     seq_len = model_config["sequence_length"]
     num_head = model_config["num_attention_heads"]
-    tp_degree = parallel_config["mp"] # egi: modified variable name for code unifying , tp_degree -> mp
+    mp = parallel_config["mp"] # egi: modified variable name for code unifying , tp_degree -> mp
     mbs = parallel_config["micro_bs"]
     param_count = []
     activation_memory = []
@@ -440,7 +442,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
 
     gpu_memory = 24 #TODO: get gpu memory from args
     if peak_memory > gpu_memory:
-        print(f"peak memory is larger than gpu memory. MBS: {mbs.item()}, TP: {tp_degree.item()}, PP: {parallel_config['pp'].item()}, partition: {partition}")
+        print(f"peak memory is larger than gpu memory. MBS: {mbs.item()}, TP: {mp.item()}, PP: {parallel_config['pp'].item()}, partition: {partition}")
         print(f"peak memory is {peak_memory} GB")
         return False
     else:

@@ -247,10 +247,9 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         if layer_type == "embedding_layer":
             if not counted:
                 counted = True
-                param_count += 164_249_600
+                param_count += (h * v) / mp
         elif layer_type == "transformer_layer":
-            param_count += 24 * h ** 2 / mp
-            param_count += 3200 * 2 /mp
+            param_count += ((12 * h ** 2)+(20800)) / mp
     
     # Get communication bandwidth of pipeline stage 0
     for j in range(int(mp.item())):

@@ -12,18 +12,20 @@ from cost_het_cluster import HetGPT
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--gbs", type=int, default=32)
+parser.add_argument("--gbs", type=int, default=64)
 parser.add_argument("--exp_name", type=str, default="het_cluster")
 parser.add_argument("--model_config", type=str, default="gpt2XL")
 parser.add_argument("--hidden_size", type=int, default=1600)
 parser.add_argument("--sequence_length", type=int, default=2048)
 parser.add_argument("--num_layers", type=int, default=48)
-parser.add_argument("--vocab_size", type=int, default=51200)
+parser.add_argument("--vocab_size", type=int, default=50257)
 parser.add_argument("--type", type=str, default="gpt2XL")
 parser.add_argument("--gpu_per_node", type=int, default=4)
-parser.add_argument("--num_node", type=int, default=4)
+parser.add_argument("--num_node", type=int, default=16)
 parser.add_argument("--num_attention_heads", type=int, default=16)
-# TODO: add fp16 args
+parser.add_argument("--precision", type=int, default=16)
+
+# TODO: add fp16 args -> egi: done
 args = parser.parse_args()
 
 # cluster information
@@ -38,64 +40,36 @@ dir_path = os.path.join(home_path, 'tdpp/HetGPT/main_logs')
 if not os.path.exists(dir_path):
     os.mkdir(dir_path)
 
-cluster_info0 = {} # a100:4 + a10:4     2 x nodes
-cluster_info1 = {} # a10:8              2 x nodes
-cluster_info2 = {} # a100:4 + a10:12    4 x nodes
-cluster_info3 = {} # a10:16             4 x nodes
-cluster_info4 = {} # a100:4 : a10:28    8 x nodes
+cluster_info = {}
 
-# get all possible combinations of clusters, but append only not duplicated ones
-cluster_info0[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
-cluster_info0[1] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+# inter-node bandwidth, intra-node bandwidth (in Gbps)
+cluster_info[0] = [torch.tensor([40 * 1e9]).float(), torch.tensor([600 * 1e9]).float()]
+for i in range(1, num_node):
+    cluster_info[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
-cluster_info1[0] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-cluster_info1[1] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
+                "sequence_length": torch.tensor([2048]).float(), 
+                "num_layers": torch.tensor([48]).float(), 
+                "vocab_size":torch.tensor([51200]).float(),
+                "num_attention_heads": torch.tensor([16]).float(),
+                "type":args.type,
+                "precision":torch.tensor([int(args.precision)]).float()} # egi: add precision argument
 
-cluster_info2[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
-cluster_info2[1] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-cluster_info2[2] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-cluster_info2[3] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+config_h = int((model_config["hidden_size"]).item())
+config_n = int(model_config["num_layers"].item())
+time_stamp = int(time.time())
+exp_name = f"het_cluster"
+record_file = f"{os.path.join(dir_path, exp_name)}_{time_stamp}.txt"
 
-for i in range(4):
-    cluster_info3[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+# remove cache directory from last run
+if os.path.exists(os.path.join(home_path, "tmp")):
+    for root, dirs, files in os.walk(os.path.join(home_path, "tmp")):
+        for f in files:
+            os.unlink(os.path.join(root, f))
 
-cluster_info4[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
-for i in range(1, 8):
-    cluster_info4[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-
-cluster_combinations = [cluster_info0, cluster_info1, cluster_info2, cluster_info3, cluster_info4]
-want_simulate = [] 
-
-for cluster_info in cluster_combinations:
-    num_node = len(cluster_info)
-    gpu_of_cluster = []
-    for i in range(num_node):
-        if cluster_info[i][1] == torch.tensor([4800 * 1e9]).float():
-            gpu_of_cluster.append('A100')
-        else:
-            gpu_of_cluster.append('A10')
-
-    model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
-                    "sequence_length": torch.tensor([2048]).float(), 
-                    "num_layers": torch.tensor([48]).float(), 
-                    "vocab_size":torch.tensor([51200]).float(),
-                    "num_attention_heads": torch.tensor([16]).float(),
-                    "type":args.type}
-
-    config_h = int((model_config["hidden_size"]).item())
-    config_n = int(model_config["num_layers"].item())
-    time_stamp = int(time.time())
-    exp_name = f"het_cluster"
-    record_file = f"{os.path.join(dir_path, exp_name)}_{time_stamp}.txt"
-
-    # remove cache directory from last run
-    if os.path.exists(os.path.join(home_path, "tmp")):
-        for root, dirs, files in os.walk(os.path.join(home_path, "tmp")):
-            for f in files:
-                os.unlink(os.path.join(root, f))
-
-    # save this name to env
-    os.environ["amp_log_path"] = record_file
+# save this name to env
+os.environ["amp_log_path"] = record_file
+>>>>>>> 2ad07c92f15cb5e2cbfcb96bc196e2b35d937ddc
 
 gbs = int(args.gbs)
 model = HetGPT(model_config, exp_name)

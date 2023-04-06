@@ -5,6 +5,7 @@ import torch
 import numpy as np
 
 from amp_utils import axis2rank
+from stage import PPGroup
 
 class Stage:
 
@@ -106,30 +107,41 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
 
 def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst):
 
-    print(f"sum of stage_latency is {sum(stage_time_lst)}")
-    # print(f"stage_comp_time_lst {stage_comp_time_lst}")
-    # print(f"stage_comm_time_lst {stage_comm_time_lst}")
+    ppgroup_cfg = {"num_mb": None,
+                   "pp_degree": None,
+                   "stage_comp_time_lst": stage_comp_time_lst,
+                   "p2p_time_lst": stage_comm_time_lst
+                   }
 
-    # max_latency = max(stage_latency)
-    # print(f"max_latency is {max_latency}")
-    # cost = (num_mb-1) * max_latency
-    # print(f"num_mb is {num_mb}, cost is {cost}")
-    # cost += sum(stage_latency)
-    # print(f"cost is {cost}")
-
-    # cost = sum(stage_latency)
-    # last_stage_latency = stage_latency[-1]
-    # cost += (num_mb.item()-1)*last_stage_latency
+    if isinstance(num_mb, torch.Tensor):
+        ppgroup_cfg["num_mb"] = int(num_mb.item())
+    else:
+        ppgroup_cfg["num_mb"] = num_mb
     
-    max_latency = max(stage_time_lst)
-    print(f"max_latency is {max_latency}")
-    cost = (num_mb-1) * max_latency
-    print(f"num_mb is {num_mb}, cost is {cost}")
-    cost += sum(stage_time_lst)
-    print(f"cost is {cost}")
+    if isinstance(pp_degree, torch.Tensor):
+        ppgroup_cfg["pp_degree"] = int(pp_degree.item())
+    else:
+        ppgroup_cfg["pp_degree"] = pp_degree
 
+    if ppgroup_cfg["pp_degree"] == 1:
+        cost = sum(stage_comp_time_lst)
 
-    return cost
+    else:    
+        my_pp_group = PPGroup(**ppgroup_cfg)
+        
+        my_pp_group.simulate_full_pipeline()
+        cost = my_pp_group.get_pipe_cost()
+
+    cost = torch.tensor(cost)
+
+    print("estimated pipeline latency:", cost.item())
+
+    if ppgroup_cfg["pp_degree"] == 1:
+        stage_wise_cost_lst = [cost]
+    else:
+        stage_wise_cost_lst = my_pp_group.get_stagewise_end_time_lst()
+
+    return cost, stage_wise_cost_lst
 
 
 
