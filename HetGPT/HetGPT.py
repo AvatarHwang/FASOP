@@ -39,6 +39,7 @@ cluster_info1 = {} # a10:8              2 x nodes
 cluster_info2 = {} # a100:4 + a10:12    4 x nodes
 cluster_info3 = {} # a10:16             4 x nodes
 cluster_info4 = {} # a100:4 : a10:28    8 x nodes
+cluster_info5 = {} # a10:32             8 x nodes
 
 # get all possible combinations of clusters, but append only not duplicated ones
 cluster_info0[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
@@ -59,7 +60,10 @@ cluster_info4[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]
 for i in range(1, 8):
     cluster_info4[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
-cluster_combinations = [cluster_info0, cluster_info1, cluster_info2, cluster_info3, cluster_info4]
+for i in range(8):
+    cluster_info5[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+
+cluster_combinations = [cluster_info0, cluster_info1, cluster_info2, cluster_info3, cluster_info4, cluster_info5]
 want_simulate = [] 
 
 for cluster_info in cluster_combinations:
