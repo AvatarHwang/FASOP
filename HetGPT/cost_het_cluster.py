@@ -229,14 +229,16 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     mp = parallel_config["mp"]
     dp = parallel_config["dp"]
     pp = parallel_config["pp"]
+    precision = model_config["precision"]
     
     _layer = ["embedding_layer"]
     for i in range(int(n.item())):
         _layer.append("transformer_layer")
-    if pp>1:
-        _layer.extend(["embedding_layer"])    
-    else:
-        _layer.extend(["None"])
+    # if pp>1:
+    #     _layer.extend(["embedding_layer"])    
+    # else:
+    #     _layer.extend(["None"])
+    _layer.extend(["None"])
     _num_layer = len(_layer)
         
     # First translate to deepspeed partition form
@@ -245,24 +247,14 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         ds_partition.append(ds_partition[-1]+partition[i])
     assert ds_partition[-1] == _num_layer
     assert len(ds_partition) == pp + 1
-
-    counted = False
-    param_count = 0    
-    for layer_id in range(ds_partition[0], ds_partition[1]):
-        layer_type = _layer[layer_id]
-        if layer_type == "embedding_layer":
-            if not counted:
-                counted = True
-                param_count += 164_249_600
-        elif layer_type == "transformer_layer":
-            param_count += 24 * h ** 2 / mp
-            param_count += 3200 * 2 /mp
     
-    # Get communication bandwidth of pipeline stage 0
-    dp_cost_list = []
+    # Get communication time list for pp stage 
+    dp_cost_for_stage = []
+
     for i in range(int(pp.item())):
         for j in range(int(mp.item())):
             bandwidth = []
+            # get slowest of bandwidth
             for k in range(int(dp.item())):
                 rank_cur = axis2rank(axis=(0,k,j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
                 node_cur = rank_node_map[int(rank_cur.item())]
@@ -274,14 +266,28 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
                 else:
                     connectivity = min(cluster_info[node_cur][0], cluster_info[node_next][0])
                 bandwidth.append(connectivity)
-        # get slowest of bandwidth
-        bandwidth = min(bandwidth)
-
-        # All-reduce cost: 2(n-1)M / nB
-        precision = 16 #TODO: precision should be args.precision
-        dp_cost_list.append(2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth))
-    print("dp_cost_list: ", dp_cost_list)
-    return ds_partition, dp_cost_list
+                
+            # get slowest of bandwidth
+            bandwidth = min(bandwidth)                
+            param_count = 0                 
+            counted = False             
+                            
+            for layer_id in range(ds_partition[i], ds_partition[i+1]):
+                layer_type = _layer[layer_id]
+                if layer_type == "embedding_layer":
+                    if not counted:
+                        counted = True
+                        param_count += (h*v) / mp
+                elif layer_type == "transformer_layer":
+                    param_count += ((12*h**2)+20800) / mp
+            # All-reduce cost: 2(n-1)M / nB              
+            dp_cost = 2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth)
+            
+        dp_cost_for_stage.append(dp_cost)
+        # print(f"pp, tp, dp - {pp, mp, dp} pp stage: {i} bw: {bandwidth} dp_cost: {param_count, dp_cost}")
+    # print(dp_cost_for_stage)
+    
+    return ds_partition, dp_cost_for_stage
 
 def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
     L = model_config["num_layers"]
