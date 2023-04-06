@@ -136,7 +136,12 @@ def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage
 
     print("estimated pipeline latency:", cost.item())
 
-    return cost
+    if ppgroup_cfg["pp_degree"] == 1:
+        stage_wise_cost_lst = [cost]
+    else:
+        stage_wise_cost_lst = my_pp_group.get_stagewise_end_time_lst()
+
+    return cost, stage_wise_cost_lst
 
 
 

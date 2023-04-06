@@ -345,7 +345,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
     
     print(f"Step 1 partition: {partition}")
 
-    pipecost_last = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)
+    pipecost_last, _ = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)
     # translate to ds form, add data parallelism cost
     ds_partition_last, dp_side_cost_last = dp_cost(config, cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, 
@@ -375,7 +375,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
             stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
             stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
 
-            pipecost = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)       
+            pipecost, _ = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)       
             # translate to ds form, add data parallelism cost
             ds_partition, dp_side_cost = dp_cost(config, cluster_info=cluster_info, 
                                 model_config=model_config, parallel_config=parallel_config, 
