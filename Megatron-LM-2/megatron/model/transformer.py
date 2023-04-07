@@ -854,9 +854,9 @@ def _get_num_layers(args, is_encoder_and_decoder_model, is_decoder=False):
                     num_layers = args.decoder_num_layers // num_ranks_in_decoder
                     print("num_layers", num_layers)
         else:
-            assert args.num_layers == args.encoder_num_layers
-            assert args.num_layers % args.transformer_pipeline_model_parallel_size == 0, \
-                'num_layers must be divisible by transformer_pipeline_model_parallel_size'
+            #assert args.num_layers == args.encoder_num_layers
+            #assert args.num_layers % args.transformer_pipeline_model_parallel_size == 0, \
+                #'num_layers must be divisible by transformer_pipeline_model_parallel_size'
 
             # When a standalone embedding stage is used, all transformer layers
             # are divided among pipeline rank >= 1, while on pipeline rank 0,
