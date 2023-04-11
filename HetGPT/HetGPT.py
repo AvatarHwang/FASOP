@@ -12,11 +12,11 @@ from cost_het_cluster import HetGPT
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--gbs", type=int, default=64)
+parser.add_argument("--gbs", type=int, default=32)
 parser.add_argument("--exp_name", type=str, default="het_cluster")
 parser.add_argument("--model_config", type=str, default="gpt2XL")
 parser.add_argument("--hidden_size", type=int, default=1600)
-parser.add_argument("--sequence_length", type=int, default=2048)
+parser.add_argument("--sequence_length", type=int, default=1024)
 parser.add_argument("--num_layers", type=int, default=48)
 parser.add_argument("--vocab_size", type=int, default=50257)
 parser.add_argument("--type", type=str, default="gpt2XL")
@@ -76,9 +76,9 @@ for cluster_info in cluster_combinations:
             gpu_of_cluster.append('g5.12xlarge')
 
     model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
-                    "sequence_length": torch.tensor([2048]).float(), 
+                    "sequence_length": torch.tensor([1024]).float(), 
                     "num_layers": torch.tensor([48]).float(), 
-                    "vocab_size":torch.tensor([51200]).float(),
+                    "vocab_size":torch.tensor([50257]).float(),
                     "num_attention_heads": torch.tensor([16]).float(),
                     "type":args.type,
                     "precision":torch.tensor([int(args.precision)]).float()} # egi: add precision argument

@@ -52,18 +52,6 @@ class HetGPT(nn.Module):
             self.profile_cost1[str(mp_size)] = cur_profile_cost1
             self.profile_cost2[str(mp_size)] = cur_profile_cost2
         
-        if 1==2: #args.profile_per_mbs
-            for mbs in [1, 2, 4, 8, 16]:
-                for mp_size in [1,2,4]:
-                    # known_cost directory stores the real forward time with correponding model parallel degree.
-                    known_record = f"known_cost/{self.model_type}_A100_{mp_size}_mbs{mbs}" 
-                    cur_profile_cost1 = 2 * np.load(f"{known_record}.npy")
-                    known_record = f"known_cost/{self.model_type}_A10_{mp_size}_mbs{mbs}"
-                    cur_profile_cost2 = 2 * np.load(f"{known_record}.npy")
-
-                    self.profile_cost1[str(mp_size)+'-'+str(mbs)] = cur_profile_cost1
-                    self.profile_cost2[str(mp_size)+'-'+str(mbs)] = cur_profile_cost2
-        
     def forward(self, args):
         model_type = self.model_type
         config, bs, micro_bs, cluster_info, model_config, oth = args
@@ -253,10 +241,9 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         if layer_type == "embedding_layer":
             if not counted:
                 counted = True
-                param_count += 164_249_600
+                param_count += (h*v) / mp
         elif layer_type == "transformer_layer":
-            param_count += 24 * h ** 2 / mp
-            param_count += 3200 * 2 /mp
+            param_count += ((16*h**2)+20800) / mp #TODO: clarify 16 = num_head.
     
     # Get communication bandwidth of pipeline stage 0
     dp_cost_list = []
@@ -276,10 +263,14 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
                 bandwidth.append(connectivity)
         # get slowest of bandwidth
         bandwidth = min(bandwidth)
+        gpu_per_node = 4 #TODO: shoud be args
+        if int(mp.item())+int(dp.item()) > gpu_per_node and int(dp.item())>1:
+            bandwidth = bandwidth / int(mp.item())
 
         # All-reduce cost: 2(n-1)M / nB
         precision = 16 #TODO: precision should be args.precision
-        dp_cost_list.append(2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth))
+        dp_cost = 2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth)
+        dp_cost_list.append(dp_cost)
     return ds_partition, dp_cost_list
 
 def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
