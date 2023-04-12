@@ -40,6 +40,8 @@ cluster_info2 = {} # a100:4 + a10:12    4 x nodes
 cluster_info3 = {} # a10:16             4 x nodes
 cluster_info4 = {} # a100:4 : a10:28    8 x nodes
 cluster_info5 = {} # a10:32             8 x nodes
+cluster_info6 = {} # a10:64             16 x nodes
+cluster_info7 = {} # a100:4, a10:60     16 x nodes
 
 # get all possible combinations of clusters, but append only not duplicated ones
 cluster_info0[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
@@ -63,7 +65,14 @@ for i in range(1, 8):
 for i in range(8):
     cluster_info5[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
-cluster_combinations = [cluster_info0, cluster_info1, cluster_info2, cluster_info3, cluster_info4, cluster_info5]
+for i in range(16):
+    cluster_info6[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+
+cluster_info7[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
+for i in range(1,16):
+    cluster_info7[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+
+cluster_combinations = [cluster_info0, cluster_info1, cluster_info2, cluster_info3, cluster_info4, cluster_info5, cluster_info6, cluster_info7]
 want_simulate = [] 
 
 for cluster_info in cluster_combinations:
@@ -138,7 +147,7 @@ for cluster_info in cluster_combinations:
 
 print(f"Finished {time.time() - time_s}")
 
-sorted_settings = sorted(want_simulate, key = lambda kv: kv[-1])
+sorted_settings = sorted(want_simulate, key = lambda kv: kv[-9])
 with open(record_file, "a") as fp:
     for item in sorted_settings:
         fp.write(f"rank {sorted_settings.index(item)}: {item}")

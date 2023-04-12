@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --nodes=12
+#SBATCH --nodes=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu2
 #SBATCH --gres=gpu:a10:4
@@ -22,12 +22,12 @@ echo $MASTER_ADDR
 ENROOT_SCRIPT=$(cat <<EOF
 CONTAINER_PATH="/scratch/enroot/\$UID/data/megatron-latest"
 
-# rm -rf /scratch/enroot/\$UID/data/megatron-latest
+rm -rf /scratch/enroot/\$UID/data/megatron-latest
 
 if [ -d "\$CONTAINER_PATH" ] ; then 
     echo "container exist";
 else
-    enroot create -n megatron-latest \$HOME/tdpp/image/megatron-latest2.sqsh ;
+    enroot create -n megatron-latest \$HOME/tdpp/image/nvcr.io+nvidia+pytorch+23.03-py3.sqsh ;
 fi
 
 NODE_LIST=\`scontrol show hostnames \$SLURM_JOB_NODELIST\`

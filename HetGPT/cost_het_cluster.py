@@ -126,11 +126,12 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
                 
                 if node_cur != node_peer: 
                     cur_bandwidth = min(cluster_info[node_cur][0], cluster_info[node_peer][0])
+                    cur_bandwidth = cur_bandwidth / int(dp.item()) / int(mp.item())
                 else:
                     cur_bandwidth = cluster_info[node_cur][1]
                 if cur_bandwidth < slowest_bandwidth:
                     slowest_bandwidth = cur_bandwidth
-                    slowest_bandwidth = slowest_bandwidth
+                    slowest_bandwidth = slowest_bandwidth      
             for k in range(_num_layer-1):
                 cost_c[i][k][j] = layer_volume[k] * precision / slowest_bandwidth
     # cost_c = torch.mean(cost_c, dim=0) 
@@ -376,22 +377,25 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
     if pp_degree>1:
         while(1):
             # get min stage latency and its index
-            min_latency = min(end2end_stage_latency)
-            min_latency_index = end2end_stage_latency.index(min_latency)
+            min_stage = min(stage_wise_cost_lst)
+            min_stage_index = stage_wise_cost_lst.index(min_stage)
             # get max stage latency and its index
             max_latency = max(end2end_stage_latency)
             max_latency_index = end2end_stage_latency.index(max_latency)
             if partition[0] <= 2:
                 break
-            partition[min_latency_index] += 1
-            partition[max_latency_index] -= 1
+            if min_stage_index != max_latency_index:
+                partition[min_stage_index] += 1
+                partition[max_latency_index] -= 1
+            else:
+                break
 
             # update stage_latency
             pp_degree = int(pp_degree)
             pp_per_node = int(pp_degree / N)
 
             # update stage_latency
-            stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, M, dp_degree)
+            stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, M, M*N, pp_degree)
 
             stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
             stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
@@ -417,61 +421,10 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
                 dp_side_cost_last = dp_side_cost
                 cost_last = cost_current
             else:
-                partition[min_latency_index] -= 1
+                partition[min_stage_index] -= 1
                 partition[max_latency_index] += 1
                 break
     #oom_flag = EstimatePeakMemory(partition, model_config, parallel_config, layer_type)
 
     return rank_map, partition, cost_last, pipecost_last, dp_side_cost_last, all_reduce_embedding_cost
     
-
-def EstimatePeakMemory(partition, model_config, parallel_config, layer_type):
-    hidden_size = model_config["hidden_size"]
-    v = model_config["vocab_size"]
-    seq_len = model_config["sequence_length"]
-    num_head = model_config["num_attention_heads"]
-    tp_degree = parallel_config["mp"]
-    mbs = parallel_config["micro_bs"]
-    param_count = []
-    activation_memory = []
-    pipeline_buffer_memory = []
-    layer_index = 0
-
-    for stage in partition:
-        param=0
-        avtivation = 0
-        pipeline_buffer = 0
-        for i in range(stage):
-            if layer_type[i] == "embedding_layer":
-                param += 164249600
-                avtivation += mbs * seq_len * hidden_size
-            elif layer_type[i] == "transformer_layer":
-                param += 24 * hidden_size ** 2 / tp_degree
-                param += 3200 * 2 # LayerNorm
-                avtivation += 9 * mbs * seq_len * hidden_size + mbs * seq_len ** 2 * num_head # reference: https://arxiv.org/pdf/2110.05722.pdf
-                if i == 0:
-                    pipeline_buffer += mbs * seq_len * hidden_size # BLH
-            else:
-                pass
-            layer_index += 1
-        param_count.append(param * 16 / 8 / 1024 / 1024 / 1024) # Translate into GB
-        activation_memory.append(avtivation * 16 / 8 / 1024 / 1024 / 1024)
-        pipeline_buffer_memory.append(pipeline_buffer * 16 / 8 / 1024 / 1024 / 1024)
-
-    # get peak memory
-    peak_memory = []
-    for i in range(len(partition)):
-        peak_memory.append(param_count[i] + activation_memory[i] + pipeline_buffer_memory[i])
-    peak_memory = max(peak_memory)
-
-    gpu_memory = 24 #TODO: get gpu memory from args
-    if peak_memory > gpu_memory:
-        print(f"peak memory is larger than gpu memory. MBS: {mbs.item()}, TP: {tp_degree.item()}, PP: {parallel_config['pp'].item()}, partition: {partition}")
-        print(f"peak memory is {peak_memory} GB")
-        return False
-    else:
-        print("peak memory is smaller than gpu memory")
-        print(f"peak memory is {peak_memory} GB")
-        return True
-
-            
