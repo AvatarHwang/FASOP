@@ -52,6 +52,18 @@ class HetGPT(nn.Module):
             self.profile_cost1[str(mp_size)] = cur_profile_cost1
             self.profile_cost2[str(mp_size)] = cur_profile_cost2
         
+        if 1==2: #args.profile_per_mbs
+            for mbs in [1, 2, 4, 8, 16]:
+                for mp_size in [1,2,4]:
+                    # known_cost directory stores the real forward time with correponding model parallel degree.
+                    known_record = f"known_cost/{self.model_type}_A100_{mp_size}_mbs{mbs}" 
+                    cur_profile_cost1 = 2 * np.load(f"{known_record}.npy")
+                    known_record = f"known_cost/{self.model_type}_A10_{mp_size}_mbs{mbs}"
+                    cur_profile_cost2 = 2 * np.load(f"{known_record}.npy")
+
+                    self.profile_cost1[str(mp_size)+'-'+str(mbs)] = cur_profile_cost1
+                    self.profile_cost2[str(mp_size)+'-'+str(mbs)] = cur_profile_cost2
+        
     def forward(self, args):
         model_type = self.model_type
         config, bs, micro_bs, cluster_info, model_config, oth = args
@@ -118,12 +130,9 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
                     cur_bandwidth = cluster_info[node_cur][1]
                 if cur_bandwidth < slowest_bandwidth:
                     slowest_bandwidth = cur_bandwidth
-        share = int(dp.item())*int(mp.item())
-        if share>4: #TODO: 4 should be gpus_per_node
-            share=4 #TODO: 4 should be gpus_per_node
-        slowest_bandwidth = slowest_bandwidth / share # Inter-node communication is shared by pp-group 
-        for k in range(_num_layer-1):
-                cost_c[i][k][j] = layer_volume[k] * precision / slowest_bandwidth 
+                    slowest_bandwidth = slowest_bandwidth
+            for k in range(_num_layer-1):
+                cost_c[i][k][j] = layer_volume[k] * precision / slowest_bandwidth
     # cost_c = torch.mean(cost_c, dim=0) 
     cost_c = torch.max(cost_c, dim=0) # max is reasonable, since we are using the slowest connection
     return cost_c.values, _layer
@@ -244,15 +253,18 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         if layer_type == "embedding_layer":
             if not counted:
                 counted = True
-                param_count += (h*v) / mp
+                # param_count += 164_249_600
+                param_count += (h*v)/mp
         elif layer_type == "transformer_layer":
-            param_count += ((16*h**2)+20800) / mp #TODO: clarify 16 = num_head.
+            # param_count += 24 * h ** 2 / mp
+            # param_count += 3200 * 2 /mp
+            param_count += ((16 * h ** 2)+20800) / mp
     
     # Get communication bandwidth of pipeline stage 0
     dp_cost_list = []
     for i in range(int(pp.item())):
         for j in range(int(mp.item())):
-            bandwidth = []
+            bandwidth_lst = []
             for k in range(int(dp.item())):
                 rank_cur = axis2rank(axis=(0,k,j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
                 node_cur = rank_node_map[int(rank_cur.item())]
@@ -263,19 +275,19 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
                     connectivity = cluster_info[node_cur][1]
                 else:
                     connectivity = min(cluster_info[node_cur][0], cluster_info[node_next][0])
-                bandwidth.append(connectivity)
+                bandwidth_lst.append(connectivity)
         # get slowest of bandwidth
-        bandwidth = min(bandwidth)
+        bandwidth = min(bandwidth_lst)
+
         gpu_per_node = 4 #TODO: shoud be args
         if int(mp.item())+int(dp.item()) > gpu_per_node and int(dp.item())>1:
             bandwidth = bandwidth / int(mp.item())
 
-        print(f"bw: {bandwidth}")
 
         # All-reduce cost: 2(n-1)M / nB
         precision = 16 #TODO: precision should be args.precision
-        dp_cost = 2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth)
-        dp_cost_list.append(dp_cost)
+        dp_cost_list.append(2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth))
+        
     return ds_partition, dp_cost_list
 
 def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
@@ -346,7 +358,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
 
     pipecost_last, stage_wise_cost_lst = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)
     # translate to ds form, add data parallelism cost
-    ds_partition_last, dp_cost_list_last = dp_cost(config, cluster_info=cluster_info, 
+    ds_partition_last, dp_cost_list = dp_cost(config, cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, 
                         amp_config=amp_config, partition=partition)
     
@@ -354,12 +366,12 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
 
     end2end_stage_latency=[]
     for i in range(len(stage_wise_cost_lst)):
-        end2end_stage_latency.append(stage_wise_cost_lst[i] + dp_cost_list_last[i])
+        end2end_stage_latency.append(stage_wise_cost_lst[i] + dp_cost_list[i])
     cost_last = max(end2end_stage_latency) + all_reduce_embedding_cost
 
     max_latency = max(end2end_stage_latency)
     max_latency_index = end2end_stage_latency.index(max_latency)
-    dp_side_cost_last = dp_cost_list_last[max_latency_index]
+    dp_side_cost_last = dp_cost_list[max_latency_index]
 
     if pp_degree>1:
         while(1):
@@ -371,7 +383,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
             max_latency_index = end2end_stage_latency.index(max_latency)
             if partition[0] <= 2:
                 break
-            partition[min_latency] += 1
+            partition[min_latency_index] += 1
             partition[max_latency_index] -= 1
 
             # update stage_latency
@@ -387,7 +399,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
 
             pipecost, stage_wise_cost_lst = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)       
             # translate to ds form, add data parallelism cost
-            ds_partition, dp_cost_list = dp_cost(config, cluster_info=cluster_info, 
+            ds_partition, dp_side_cost = dp_cost(config, cluster_info=cluster_info, 
                                 model_config=model_config, parallel_config=parallel_config, 
                                 amp_config=amp_config, partition=partition)
             
@@ -398,10 +410,10 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
             cost_current = max(end2end_stage_latency) + all_reduce_embedding_cost
             new_max_latency = max(end2end_stage_latency)
             new_max_latency_index = end2end_stage_latency.index(new_max_latency)
-            dp_side_cost = dp_cost_list[new_max_latency_index] 
+            dp_side_cost_last = dp_cost_list[new_max_latency_index] 
             if cost_current < cost_last:
                 ds_partition_last = ds_partition
-                dp_cost_list_last = dp_cost_list
+                pipecost_last = pipecost
                 dp_side_cost_last = dp_side_cost
                 cost_last = cost_current
             else:
