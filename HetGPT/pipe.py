@@ -57,7 +57,7 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
     print("initial partition is", partition)
 
     while(1):
-        stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, dp_degree)
+        stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, gpu_per_node*num_node, pp_degree)
         stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
 
         if pp_degree == 1 or pp_per_node < 1:
@@ -88,9 +88,9 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
                 break
             partition[max_latency_index] -= 1
             partition[min_latency_index] += 1
-            print("changed partition", partition)
+            #print("changed partition", partition)
         else:
-            print("latency is not decreasing, break")
+            #print("latency is not decreasing, break")
             partition[max_latency_index] += 1
             partition[min_latency_index] -= 1
             break
@@ -144,10 +144,11 @@ def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage
     return cost, stage_wise_cost_lst
 
 
-def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, dp_degree):
+def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, world_size, pp_degree):
     
     # stage_latency = []
-    num_bw_share = min(gpu_per_node, dp_degree)
+    #num_bw_share = min(gpu_per_node, world_size/pp_degree)
+    num_bw_share = 1 # which should be caculated in get_cost_c considering PCIe
     num_stage = len(partition)
 
     stage_latency = [Stage() for _ in range(num_stage)]
@@ -188,7 +189,7 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
             #                         + 2*cost_c[sum(partition[:stage])][stage-1])
 
             stage_latency[stage].set_comp_time(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]))
-            stage_latency[stage].set_comm_time(cost_c[sum(partition[:stage])][stage-1].item())
+            stage_latency[stage].set_comm_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
 
         # if stage == num_stage-1:
         #     # Substract the activation communication cost from the last stage
