@@ -118,9 +118,12 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
                     cur_bandwidth = cluster_info[node_cur][1]
                 if cur_bandwidth < slowest_bandwidth:
                     slowest_bandwidth = cur_bandwidth
-                    slowest_bandwidth = slowest_bandwidth
-            for k in range(_num_layer-1):
-                cost_c[i][k][j] = layer_volume[k] * precision / slowest_bandwidth
+        share = int(dp.item())*int(mp.item())
+        if share>4: #TODO: 4 should be gpus_per_node
+            share=4 #TODO: 4 should be gpus_per_node
+        slowest_bandwidth = slowest_bandwidth / share # Inter-node communication is shared by pp-group 
+        for k in range(_num_layer-1):
+                cost_c[i][k][j] = layer_volume[k] * precision / slowest_bandwidth 
     # cost_c = torch.mean(cost_c, dim=0) 
     cost_c = torch.max(cost_c, dim=0) # max is reasonable, since we are using the slowest connection
     return cost_c.values, _layer
@@ -267,6 +270,8 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         if int(mp.item())+int(dp.item()) > gpu_per_node and int(dp.item())>1:
             bandwidth = bandwidth / int(mp.item())
 
+        print(f"bw: {bandwidth}")
+
         # All-reduce cost: 2(n-1)M / nB
         precision = 16 #TODO: precision should be args.precision
         dp_cost = 2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth)
@@ -341,7 +346,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
 
     pipecost_last, stage_wise_cost_lst = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)
     # translate to ds form, add data parallelism cost
-    ds_partition_last, dp_cost_list = dp_cost(config, cluster_info=cluster_info, 
+    ds_partition_last, dp_cost_list_last = dp_cost(config, cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, 
                         amp_config=amp_config, partition=partition)
     
@@ -349,12 +354,12 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
 
     end2end_stage_latency=[]
     for i in range(len(stage_wise_cost_lst)):
-        end2end_stage_latency.append(stage_wise_cost_lst[i] + dp_cost_list[i])
+        end2end_stage_latency.append(stage_wise_cost_lst[i] + dp_cost_list_last[i])
     cost_last = max(end2end_stage_latency) + all_reduce_embedding_cost
 
     max_latency = max(end2end_stage_latency)
     max_latency_index = end2end_stage_latency.index(max_latency)
-    dp_side_cost_last = dp_cost_list[max_latency_index]
+    dp_side_cost_last = dp_cost_list_last[max_latency_index]
 
     if pp_degree>1:
         while(1):
@@ -366,7 +371,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
             max_latency_index = end2end_stage_latency.index(max_latency)
             if partition[0] <= 2:
                 break
-            partition[min_latency_index] += 1
+            partition[min_latency] += 1
             partition[max_latency_index] -= 1
 
             # update stage_latency
@@ -382,7 +387,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
 
             pipecost, stage_wise_cost_lst = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)       
             # translate to ds form, add data parallelism cost
-            ds_partition, dp_side_cost = dp_cost(config, cluster_info=cluster_info, 
+            ds_partition, dp_cost_list = dp_cost(config, cluster_info=cluster_info, 
                                 model_config=model_config, parallel_config=parallel_config, 
                                 amp_config=amp_config, partition=partition)
             
@@ -393,10 +398,10 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
             cost_current = max(end2end_stage_latency) + all_reduce_embedding_cost
             new_max_latency = max(end2end_stage_latency)
             new_max_latency_index = end2end_stage_latency.index(new_max_latency)
-            dp_side_cost_last = dp_cost_list[new_max_latency_index] 
+            dp_side_cost = dp_cost_list[new_max_latency_index] 
             if cost_current < cost_last:
                 ds_partition_last = ds_partition
-                pipecost_last = pipecost
+                dp_cost_list_last = dp_cost_list
                 dp_side_cost_last = dp_side_cost
                 cost_last = cost_current
             else:

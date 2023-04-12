@@ -138,7 +138,7 @@ for cluster_info in cluster_combinations:
 
 print(f"Finished {time.time() - time_s}")
 
-sorted_settings = sorted(want_simulate, key = lambda kv: kv[-1])
+sorted_settings = sorted(want_simulate, key = lambda kv: kv[-9])
 with open(record_file, "a") as fp:
     for item in sorted_settings:
         fp.write(f"rank {sorted_settings.index(item)}: {item}")

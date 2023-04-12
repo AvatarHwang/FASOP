@@ -147,7 +147,8 @@ def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage
 def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, dp_degree):
     
     # stage_latency = []
-    num_bw_share = min(gpu_per_node, dp_degree)
+    #num_bw_share = min(gpu_per_node, dp_degree)
+    num_bw_share=1
     num_stage = len(partition)
 
     stage_latency = [Stage() for _ in range(num_stage)]
