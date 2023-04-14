@@ -12,6 +12,8 @@ class Stage:
     def __init__(self):
         self.comm_time = 0.
         self.comp_time = 0.
+        self.for_send_time = 0.
+        self.back_send_time = 0.
 
     # def __repr__(self) -> str:
     #     string = "stage has comp time: " + str(self.set_comp_time)
@@ -24,6 +26,12 @@ class Stage:
     def set_comm_time(self, comm_time):
         self.comm_time = comm_time
     
+    def set_for_send_time(self, for_send_time):
+        self.for_send_time = for_send_time
+    
+    def set_back_send_time(self, back_send_time):
+        self.back_send_time = back_send_time
+
     def get_comp_time(self):
 
         return self.comp_time
@@ -32,6 +40,14 @@ class Stage:
         
         return self.comm_time
     
+    def get_for_send_time(self):
+        
+        return self.for_send_time
+
+    def get_back_send_time(self):
+        
+        return self.back_send_time
+
     def get_stage_time(self):
 
         return self.comm_time+self.comp_time
@@ -100,17 +116,20 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
     stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
     stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
     stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
+    stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
+    stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
 
-    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst
+    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
     # return partition, stage_latency#TODO:stage_comp, stage_comm # stage-1 dim
 
 
-def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst):
+def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, stage_back_send_time_lst):
 
     ppgroup_cfg = {"num_mb": None,
                    "pp_degree": None,
                    "stage_comp_time_lst": stage_comp_time_lst,
-                   "p2p_time_lst": stage_comm_time_lst
+                   "stage_for_send_time_lst": stage_for_send_time_lst,
+                   "stage_back_send_time_lst": stage_back_send_time_lst
                    }
 
     if isinstance(num_mb, torch.Tensor):
@@ -132,7 +151,8 @@ def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage
         my_pp_group.simulate_full_pipeline()
         cost = my_pp_group.get_pipe_cost()
 
-    cost = torch.tensor(cost)
+    if not isinstance(cost, torch.Tensor):
+        cost = torch.tensor(cost)
 
     print("estimated pipeline latency:", cost.item())
 
