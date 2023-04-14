@@ -185,6 +185,7 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
             if stage < pp_per_node:
                 if stage == 0:
                     stage_latency[stage].set_comp_time(sum(cost_e1[:partition[0]]))
+                    stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
                     # stage_latency.append(sum(cost_e1[:partition[0]]))
                 else:
                     num_layer_til_last_stage = sum(partition[:stage])
@@ -192,12 +193,21 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
                     
                     stage_latency[stage].set_comp_time(sum(cost_e1[num_layer_til_last_stage:num_layer_til_cur_stage]))
                     stage_latency[stage].set_comm_time(2*(cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+                    
+                    if stage!=num_stage-1:
+                        stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
+                    stage_latency[stage].set_back_send_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
 
                     # stage_latency.append(sum(cost_e1[num_layer_til_last_stage:num_layer_til_cur_stage]) \
                     #                     + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
             else:
                 stage_latency[stage].set_comp_time(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]))
                 stage_latency[stage].set_comm_time(2*(cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+
+                if stage!=num_stage-1:
+                    stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
+                if stage!=0:
+                    stage_latency[stage].set_back_send_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
 
                 # stage_latency.append(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]) \
                 #                     + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
@@ -210,6 +220,10 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
 
             stage_latency[stage].set_comp_time(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]))
             stage_latency[stage].set_comm_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+            if stage!=num_stage-1:
+                stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
+            if stage!=0:
+                stage_latency[stage].set_back_send_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
 
         # if stage == num_stage-1:
         #     # Substract the activation communication cost from the last stage
