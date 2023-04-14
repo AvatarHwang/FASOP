@@ -1,6 +1,9 @@
 NODE_RANK=$1
 SCRIPT_NAME='run_inter.sh'
-#enroot create $HOME/tdpp/image/megatron-latest.sqsh
+
+#rm -rf /scratch/enroot/1182/data/megatron-latest
+#enroot create -n megatron-latest /home1/soonyear/tdpp/image/nvcr.io+nvidia+pytorch+23.03-py3.sqsh
+
 enroot start --root \
             --rw \
             -m $HOME/tdpp/Megatron-LM-2:/root/Megatron-LM megatron-latest \

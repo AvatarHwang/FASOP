@@ -38,19 +38,26 @@ class Stage:
 
 def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, gpu_per_node, dp_degree):
     time_s = time.time()
-
+    if num_layer < 27:
+        num_layer = 24
     pp_per_node = pp_degree // num_node
     num_balanced_layer = num_layer // pp_degree
-    if pp_degree ==2:
-        num_balanced_layer = 24
-    if pp_degree ==1:
-        num_balanced_layer = 48
+    if num_layer%pp_degree != 0:
+        not_balanced = True
+    if num_layer >= 48:
+        if pp_degree ==2:
+            num_balanced_layer = 24
+        if pp_degree ==1:
+            num_balanced_layer = 48
     partition = []
     max_latency = 1000000
     for i in range(pp_degree):
         partition.append(num_balanced_layer)
     if pp_degree == 32:
         partition = [1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2]
+    if num_layer <= 26:
+        if pp_degree == 16:
+            partition = [2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1]
     partition[0] += 1
     partition[-1] += 1
 

@@ -18,7 +18,8 @@ class HetGPT(nn.Module):
         self.model_config = model_config
         self.exp_name = "init_" + exp_name 
         self.model_type = model_config["type"]
-        assert self.model_type == "gpt2XL" 
+        #assert self.model_type == "gpt2XL" 
+        print("model_type: ", self.model_type)
         self.cluster_info0 = cluster_info0
         self.cluster_info1 = cluster_info1
         self.init_param()
@@ -45,9 +46,14 @@ class HetGPT(nn.Module):
                 known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
                 cur_profile_cost1 = 3 * np.load(f"{known_record}.npy")
                 cur_profile_cost1 = np.append(cur_profile_cost1, 0)
-            known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
-            cur_profile_cost2 = 3 * np.load(f"{known_record}.npy")
-            cur_profile_cost2 = np.append(cur_profile_cost2, 0)
+            if self.cluster_info1[1] == torch.tensor([4800 * 1e9]).float():
+                known_record = f"known_cost/{self.model_type}_A100_{mp_size}" 
+                cur_profile_cost2 = 3 * np.load(f"{known_record}.npy")
+                cur_profile_cost2 = np.append(cur_profile_cost2, 0)
+            else:
+                known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
+                cur_profile_cost2 = 3 * np.load(f"{known_record}.npy")
+                cur_profile_cost2 = np.append(cur_profile_cost2, 0)
 
             self.profile_cost1[str(mp_size)] = cur_profile_cost1
             self.profile_cost2[str(mp_size)] = cur_profile_cost2
@@ -85,7 +91,7 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
     dp = parallel_config["dp"]
     pp = parallel_config["pp"]
     
-    precision = 16 # TODO: support fp32, should be args.precision
+    precision = torch.ones(1)*16 # TODO: support fp32, should be args.precision
 
     _layer = ["embedding_layer"]
     for i in range(int(n.item())):
@@ -130,11 +136,10 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
                 else:
                     cur_bandwidth = cluster_info[node_cur][1]
                 if cur_bandwidth < slowest_bandwidth:
-                    slowest_bandwidth = cur_bandwidth
-                    slowest_bandwidth = slowest_bandwidth      
+                    slowest_bandwidth = cur_bandwidth     
             for k in range(_num_layer-1):
                 cost_c[i][k][j] = layer_volume[k] * precision / slowest_bandwidth
-    # cost_c = torch.mean(cost_c, dim=0) 
+    #cost_c = torch.mean(cost_c, dim=0) 
     cost_c = torch.max(cost_c, dim=0) # max is reasonable, since we are using the slowest connection
     return cost_c.values, _layer
 
@@ -254,12 +259,9 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         if layer_type == "embedding_layer":
             if not counted:
                 counted = True
-                # param_count += 164_249_600
-                param_count += (h*v)/mp
+                param_count += (h*v)
         elif layer_type == "transformer_layer":
-            # param_count += 24 * h ** 2 / mp
-            # param_count += 3200 * 2 /mp
-            param_count += ((16 * h ** 2)+20800) / mp
+            param_count += ((12 * h ** 2)+20800) / mp
     
     # Get communication bandwidth of pipeline stage 0
     dp_cost_list = []
@@ -372,6 +374,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
 
     max_latency = max(end2end_stage_latency)
     max_latency_index = end2end_stage_latency.index(max_latency)
+    
     dp_side_cost_last = dp_cost_list[max_latency_index]
 
     if pp_degree>1:
@@ -382,13 +385,9 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
             # get max stage latency and its index
             max_latency = max(end2end_stage_latency)
             max_latency_index = end2end_stage_latency.index(max_latency)
-            if partition[0] <= 2:
-                break
-            if min_stage_index != max_latency_index:
-                partition[min_stage_index] += 1
-                partition[max_latency_index] -= 1
-            else:
-                break
+            if partition[0] <= 2 or partition[-1] <= 2:
+                if max_latency_index == 0 or pp_degree-1:
+                    break
 
             # update stage_latency
             pp_degree = int(pp_degree)

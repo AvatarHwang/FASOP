@@ -1,17 +1,17 @@
 #!/bin/bash
-#SBATCH --nodes=1
+#SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
-#SBATCH --partition=gpu1
-#SBATCH --nodelist=n010
-#SBATCH --gres=gpu:rtx3090:4
+#SBATCH --partition=hgx
+#SBATCH --nodelist=n050
+#SBATCH --gres=gpu:hgx:4
 #SBATCH --cpus-per-task=28
 #SBATCH -o ./log2/%j.sbatch.%N.out         # STDOUT
 #SBATCH -e ./log2/%j.sbatch.%N.err         # STDERR
 
 #************************************************************
-MASTER_HOST=n069
-GRES="gpu:rtx3090:4"
-START_RANK=3
+MASTER_HOST=n050
+GRES="gpu:hgx:4"
+START_RANK=0
 #************************************************************
 
 cd $HOME/tdpp/Megatron-LM-2
