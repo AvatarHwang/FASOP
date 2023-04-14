@@ -12,7 +12,7 @@ from cost_het_cluster import HetGPT
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--gbs", type=int, default=32)
+parser.add_argument("--gbs", type=int, default=64)
 parser.add_argument("--exp_name", type=str, default="het_cluster")
 parser.add_argument("--model_config", type=str, default="gpt2XL")
 parser.add_argument("--hidden_size", type=int, default=1600)
@@ -30,7 +30,7 @@ time_s = time.time()
 gpu_per_node = args.gpu_per_node
 
 home_path = os.environ['HOME']
-dir_path = os.path.join(home_path, 'tdpp/HetGPT/main_logs')
+dir_path = os.path.join(home_path, '/home/ohs/icpp/tdpp/HetGPT/main_logs')
 if not os.path.exists(dir_path):
     os.mkdir(dir_path)
 
@@ -111,9 +111,9 @@ for cluster_info in cluster_combinations:
     model = HetGPT(model_config, exp_name, cluster_info[0], cluster_info[1], len(cluster_info))
     assert (gbs % gpu_per_node == 0) and (gbs % num_node == 0), "global batch size is too irrgular"
 
-    with open(record_file, "a") as fp:
-        fp.write(f"{model_config}\n")                
-        fp.write(f"gbs:{gbs}\n")                
+    # with open(record_file, "a") as fp:
+    #     fp.write(f"{model_config}\n")                
+    #     fp.write(f"gbs:{gbs}\n")                
     known = None
 
     # Estimating best configurations
