@@ -12,6 +12,8 @@ class Stage:
     def __init__(self):
         self.comm_time = 0.
         self.comp_time = 0.
+        self.for_send_time = 0.
+        self.back_send_time = 0.
 
     # def __repr__(self) -> str:
     #     string = "stage has comp time: " + str(self.set_comp_time)
@@ -24,6 +26,12 @@ class Stage:
     def set_comm_time(self, comm_time):
         self.comm_time = comm_time
     
+    def set_for_send_time(self, for_send_time):
+        self.for_send_time = for_send_time
+    
+    def set_back_send_time(self, back_send_time):
+        self.back_send_time = back_send_time
+
     def get_comp_time(self):
 
         return self.comp_time
@@ -32,6 +40,14 @@ class Stage:
         
         return self.comm_time
     
+    def get_for_send_time(self):
+        
+        return self.for_send_time
+
+    def get_back_send_time(self):
+        
+        return self.back_send_time
+
     def get_stage_time(self):
 
         return self.comm_time+self.comp_time
@@ -107,17 +123,20 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
     stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
     stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
     stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
+    stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
+    stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
 
-    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst
+    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
     # return partition, stage_latency#TODO:stage_comp, stage_comm # stage-1 dim
 
 
-def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst):
+def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, stage_back_send_time_lst):
 
     ppgroup_cfg = {"num_mb": None,
                    "pp_degree": None,
                    "stage_comp_time_lst": stage_comp_time_lst,
-                   "p2p_time_lst": stage_comm_time_lst
+                   "stage_for_send_time_lst": stage_for_send_time_lst,
+                   "stage_back_send_time_lst": stage_back_send_time_lst
                    }
 
     if isinstance(num_mb, torch.Tensor):
@@ -139,7 +158,8 @@ def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage
         my_pp_group.simulate_full_pipeline()
         cost = my_pp_group.get_pipe_cost()
 
-    cost = torch.tensor(cost)
+    if not isinstance(cost, torch.Tensor):
+        cost = torch.tensor(cost)
 
     print("estimated pipeline latency:", cost.item())
 
@@ -172,6 +192,7 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
             if stage < pp_per_node:
                 if stage == 0:
                     stage_latency[stage].set_comp_time(sum(cost_e1[:partition[0]]))
+                    stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
                     # stage_latency.append(sum(cost_e1[:partition[0]]))
                 else:
                     num_layer_til_last_stage = sum(partition[:stage])
@@ -179,12 +200,21 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
                     
                     stage_latency[stage].set_comp_time(sum(cost_e1[num_layer_til_last_stage:num_layer_til_cur_stage]))
                     stage_latency[stage].set_comm_time(2*(cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+                    
+                    if stage!=num_stage-1:
+                        stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
+                    stage_latency[stage].set_back_send_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
 
                     # stage_latency.append(sum(cost_e1[num_layer_til_last_stage:num_layer_til_cur_stage]) \
                     #                     + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
             else:
                 stage_latency[stage].set_comp_time(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]))
                 stage_latency[stage].set_comm_time(2*(cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+
+                if stage!=num_stage-1:
+                    stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
+                if stage!=0:
+                    stage_latency[stage].set_back_send_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
 
                 # stage_latency.append(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]) \
                 #                     + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
@@ -197,6 +227,10 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
 
             stage_latency[stage].set_comp_time(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]))
             stage_latency[stage].set_comm_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+            if stage!=num_stage-1:
+                stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
+            if stage!=0:
+                stage_latency[stage].set_back_send_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
 
         # if stage == num_stage-1:
         #     # Substract the activation communication cost from the last stage

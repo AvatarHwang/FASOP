@@ -132,9 +132,9 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
                 
                 if node_cur != node_peer: 
                     cur_bandwidth = min(cluster_info[node_cur][0], cluster_info[node_peer][0])
-                    cur_bandwidth = cur_bandwidth / int(dp.item()) / int(mp.item())
+                    cur_bandwidth = cur_bandwidth / int(dp.item()) / int(mp.item()) / 1.05
                 else:
-                    cur_bandwidth = cluster_info[node_cur][1]
+                    cur_bandwidth = cluster_info[node_cur][1] / 3.5
                 if cur_bandwidth < slowest_bandwidth:
                     slowest_bandwidth = cur_bandwidth     
             for k in range(_num_layer-1):
@@ -357,9 +357,9 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
     cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
         
-    partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst  = pipe_ast(len(cost_e1), np.asarray(cost_e1), np.asarray(cost_e2), np.asarray(cost_c), int(pp_degree.item()), int(num_mb.item()), N, M, dp_degree)
+    partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst  = pipe_ast(len(cost_e1), np.asarray(cost_e1), np.asarray(cost_e2), np.asarray(cost_c), int(pp_degree.item()), int(num_mb.item()), N, M, dp_degree)
 
-    pipecost_last, stage_wise_cost_lst = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)
+    pipecost_last, stage_wise_cost_lst = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, stage_back_send_time_lst)
     # translate to ds form, add data parallelism cost
     ds_partition_last, dp_cost_list = dp_cost(config, cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, 
@@ -399,8 +399,10 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
             stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
             stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
             stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
+            stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
+            stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
 
-            pipecost, stage_wise_cost_lst = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst)       
+            pipecost, stage_wise_cost_lst = pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, stage_back_send_time_lst)       
             # translate to ds form, add data parallelism cost
             ds_partition, dp_side_cost = dp_cost(config, cluster_info=cluster_info, 
                                 model_config=model_config, parallel_config=parallel_config, 
