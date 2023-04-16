@@ -17,3 +17,4 @@ net-speed-server.sh
 .nfs*
 log-bakcup
 image
+image/nvcr.io+nvidia+pytorch+23.03-py3.sqsh

@@ -5,12 +5,15 @@ import torch
 import numpy as np
 
 from amp_utils import axis2rank
+from stage import PPGroup
 
 class Stage:
 
     def __init__(self):
         self.comm_time = 0.
         self.comp_time = 0.
+        self.for_send_time = 0.
+        self.back_send_time = 0.
 
     # def __repr__(self) -> str:
     #     string = "stage has comp time: " + str(self.set_comp_time)
@@ -23,6 +26,12 @@ class Stage:
     def set_comm_time(self, comm_time):
         self.comm_time = comm_time
     
+    def set_for_send_time(self, for_send_time):
+        self.for_send_time = for_send_time
+    
+    def set_back_send_time(self, back_send_time):
+        self.back_send_time = back_send_time
+
     def get_comp_time(self):
 
         return self.comp_time
@@ -31,32 +40,47 @@ class Stage:
         
         return self.comm_time
     
+    def get_for_send_time(self):
+        
+        return self.for_send_time
+
+    def get_back_send_time(self):
+        
+        return self.back_send_time
+
     def get_stage_time(self):
 
         return self.comm_time+self.comp_time
 
 def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, gpu_per_node, dp_degree):
     time_s = time.time()
-
+    if num_layer < 27:
+        num_layer = 24
     pp_per_node = pp_degree // num_node
     num_balanced_layer = num_layer // pp_degree
-    if pp_degree ==2:
-        num_balanced_layer = 24
-    if pp_degree ==1:
-        num_balanced_layer = 48
+    if num_layer%pp_degree != 0:
+        not_balanced = True
+    if num_layer >= 48:
+        if pp_degree ==2:
+            num_balanced_layer = 24
+        if pp_degree ==1:
+            num_balanced_layer = 48
     partition = []
     max_latency = 1000000
     for i in range(pp_degree):
         partition.append(num_balanced_layer)
     if pp_degree == 32:
         partition = [1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2]
+    if num_layer <= 26:
+        if pp_degree == 16:
+            partition = [2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1]
     partition[0] += 1
     partition[-1] += 1
 
     print("initial partition is", partition)
 
     while(1):
-        stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, dp_degree)
+        stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, gpu_per_node*num_node, pp_degree)
         stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
 
         if pp_degree == 1 or pp_per_node < 1:
@@ -87,9 +111,9 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
                 break
             partition[max_latency_index] -= 1
             partition[min_latency_index] += 1
-            print("changed partition", partition)
+            #print("changed partition", partition)
         else:
-            print("latency is not decreasing, break")
+            #print("latency is not decreasing, break")
             partition[max_latency_index] += 1
             partition[min_latency_index] -= 1
             break
@@ -99,121 +123,65 @@ def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, g
     stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
     stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
     stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
+    stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
+    stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
 
-    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst
+    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
     # return partition, stage_latency#TODO:stage_comp, stage_comm # stage-1 dim
 
 
-def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst):
+def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, stage_back_send_time_lst):
 
-    print(f"sum of stage_latency is {sum(stage_time_lst)}")
-    # print(f"stage_comp_time_lst {stage_comp_time_lst}")
-    # print(f"stage_comm_time_lst {stage_comm_time_lst}")
+    ppgroup_cfg = {"num_mb": None,
+                   "pp_degree": None,
+                   "stage_comp_time_lst": stage_comp_time_lst,
+                   "stage_for_send_time_lst": stage_for_send_time_lst,
+                   "stage_back_send_time_lst": stage_back_send_time_lst
+                   }
 
-    # max_latency = max(stage_latency)
-    # print(f"max_latency is {max_latency}")
-    # cost = (num_mb-1) * max_latency
-    # print(f"num_mb is {num_mb}, cost is {cost}")
-    # cost += sum(stage_latency)
-    # print(f"cost is {cost}")
-
-    # cost = sum(stage_latency)
-    # last_stage_latency = stage_latency[-1]
-    # cost += (num_mb.item()-1)*last_stage_latency
+    if isinstance(num_mb, torch.Tensor):
+        ppgroup_cfg["num_mb"] = int(num_mb.item())
+    else:
+        ppgroup_cfg["num_mb"] = num_mb
     
-    max_latency = max(stage_time_lst)
-    print(f"max_latency is {max_latency}")
-    cost = (num_mb-1) * max_latency
-    print(f"num_mb is {num_mb}, cost is {cost}")
-    cost += sum(stage_time_lst)
-    print(f"cost is {cost}")
+    if isinstance(pp_degree, torch.Tensor):
+        ppgroup_cfg["pp_degree"] = int(pp_degree.item())
+    else:
+        ppgroup_cfg["pp_degree"] = pp_degree
 
+    if ppgroup_cfg["pp_degree"] == 1:
+        cost = num_mb * sum(stage_comp_time_lst)
 
-    return cost
-
-
-
-def dp_cost(config, cluster_info,model_config, parallel_config, amp_config, partition):
-    h = model_config["hidden_size"]
-    s = model_config["sequence_length"]
-    n = model_config["num_layers"]
-    v = model_config["vocab_size"]
-    rank_node_map = parallel_config["rank_node_map"]
-    mp = parallel_config["mp"]
-    dp = parallel_config["dp"]
-    pp = parallel_config["pp"]
-    
-    _layer = ["embed2h"]
-    for i in range(int(n.item())):
-        _layer.append("transformer_layer")
-    _layer.extend(["noop"])
-    _num_layer = len(_layer)
+    else:    
+        my_pp_group = PPGroup(**ppgroup_cfg)
         
-    # First translate to deepspeed partition form
-    ds_partition = [0]
-    print(f"partition: {partition}")
-    for i in range(len(partition)):
-        ds_partition.append(ds_partition[-1]+partition[i])
-    print(ds_partition, _num_layer)
-    assert ds_partition[-1] == _num_layer
-    assert len(ds_partition) == pp + 1
-                
-    # should be per-dp_group time
-    max_dp = torch.zeros(1,)
-    i=1
-    for j in range(int(mp.item())):
-        
-        slowest = float("inf")
-        for k in range(int(dp.item())):
-            rank_cur = axis2rank(axis=(i,k,j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
-            node_cur = rank_node_map[int(rank_cur.item())]
-                
-                
-            rank_next = axis2rank(axis=(i,(k+1)%(dp.item()),j), mp_deg=mp, dp_deg=dp, pp_deg=pp)
-            node_next = rank_node_map[int(rank_next.item())]
-                
-                
-            if node_cur == node_next:
-                connectivity = cluster_info[node_cur][1]
-            else:
-                connectivity = min(cluster_info[node_cur][0], cluster_info[node_next][0])
-                    
-        slowest = min(slowest, connectivity)
-        dp_const = 2 * (dp-1) / (dp * slowest)
-        dp_const = torch.tensor([dp_const])
-            
-        param_count = torch.zeros(1,)
-        counted = False
-        for layer_id in range(ds_partition[i], ds_partition[i+1]):
-            layer_type = _layer[layer_id]
-            if layer_type == "embed2h" or layer_type == "embed2v":
-                if not counted:
-                    counted = True
-                    param_count += h * v / mp
-            elif layer_type == "transformer_layer":
-                param_count += 12 * h ** 2 / mp
-            elif layer_type == "noop":
-                pass
-            else:
-                raise RuntimeError("Unknown layer type.")
-                    
-        cur_dp = dp_const * param_count
-        if cur_dp > max_dp:
-            max_dp = cur_dp
-                
-    return ds_partition, max_dp
+        my_pp_group.simulate_full_pipeline()
+        cost = my_pp_group.get_pipe_cost()
+
+    if not isinstance(cost, torch.Tensor):
+        cost = torch.tensor(cost)
+
+    print("estimated pipeline latency:", cost.item())
+
+    if ppgroup_cfg["pp_degree"] == 1:
+        stage_wise_cost_lst = [cost]
+    else:
+        stage_wise_cost_lst = my_pp_group.get_stagewise_end_time_lst()
+
+    return cost, stage_wise_cost_lst
 
 
-def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, dp_degree):
+def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, world_size, pp_degree):
     
     # stage_latency = []
-    num_bw_share = min(gpu_per_node, dp_degree)
+    #num_bw_share = min(gpu_per_node, world_size/pp_degree)
+    num_bw_share = 1 # which should be caculated in get_cost_c considering PCIe
     num_stage = len(partition)
 
     stage_latency = [Stage() for _ in range(num_stage)]
 
     if num_stage==1:
-        stage_latency[0].set_comm_time(sum(cost_e2))
+        stage_latency[0].set_comp_time(sum(cost_e2))
         return stage_latency
         # return [sum(cost_e2)]
     
@@ -224,6 +192,7 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
             if stage < pp_per_node:
                 if stage == 0:
                     stage_latency[stage].set_comp_time(sum(cost_e1[:partition[0]]))
+                    stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
                     # stage_latency.append(sum(cost_e1[:partition[0]]))
                 else:
                     num_layer_til_last_stage = sum(partition[:stage])
@@ -231,12 +200,21 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
                     
                     stage_latency[stage].set_comp_time(sum(cost_e1[num_layer_til_last_stage:num_layer_til_cur_stage]))
                     stage_latency[stage].set_comm_time(2*(cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+                    
+                    if stage!=num_stage-1:
+                        stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
+                    stage_latency[stage].set_back_send_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
 
                     # stage_latency.append(sum(cost_e1[num_layer_til_last_stage:num_layer_til_cur_stage]) \
                     #                     + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
             else:
                 stage_latency[stage].set_comp_time(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]))
                 stage_latency[stage].set_comm_time(2*(cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+
+                if stage!=num_stage-1:
+                    stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
+                if stage!=0:
+                    stage_latency[stage].set_back_send_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
 
                 # stage_latency.append(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]) \
                 #                     + 2*cost_c[sum(partition[:stage])][stage-1]*num_bw_share)
@@ -248,7 +226,11 @@ def get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_
             #                         + 2*cost_c[sum(partition[:stage])][stage-1])
 
             stage_latency[stage].set_comp_time(sum(cost_e2[num_layer_til_last_stage:num_layer_til_cur_stage]))
-            stage_latency[stage].set_comm_time(cost_c[sum(partition[:stage])][stage-1].item())
+            stage_latency[stage].set_comm_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+            if stage!=num_stage-1:
+                stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
+            if stage!=0:
+                stage_latency[stage].set_back_send_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
 
         # if stage == num_stage-1:
         #     # Substract the activation communication cost from the last stage

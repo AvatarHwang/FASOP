@@ -27,7 +27,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $NPROC_PER_NODE \
                   --nnodes $NNODES \
                   --node_rank $NODE_RANK \
                   --master_addr $MASTER_ADDR \
-                  --master_port 6000"
+                  --master_port 6787"
 
 VOCAB_FILE=gpt2-vocab.json
 MERGE_FILE=gpt2-merges.txt
@@ -56,6 +56,7 @@ OUTPUT_ARGS="--log-interval 10 \
 
 # TENSORBOARD_ARGS="--tensorboard-dir /root/Megatron-LM/tensorboard \
 #                 --tensorboard-log-interval 10"
+
 
 hostname
 OMP_NUM_THREADS=4 python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_gpt.py \
