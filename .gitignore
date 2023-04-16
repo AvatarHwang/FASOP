@@ -1,3 +1,4 @@
+Megatron-LM-3
 build
 build-bk
 log2
@@ -11,3 +12,8 @@ __pycache__
 
 distribute-test*
 log-nsys
+net-speed-server.sh
+
+.nfs*
+log-bakcup
+image

@@ -1,27 +1,19 @@
 #!/bin/bash
-#SBATCH --nodes=2
+#SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --partition=gpu2
-#SBATCH --gres=gpu:a10:4
-#SBATCH --cpus-per-task=12
-#SBATCH -o ./log2/%j.sbatch.%N.out         
-#SBATCH -e ./log2/%j.sbatch.%N.err         
+#SBATCH --partition=hgx
+#SBATCH --gres=gpu:hgx:4
+#SBATCH --cpus-per-task=28
+#SBATCH -o ../log2/%j.sbatch.%N.out         
+#SBATCH -e ../log2/%j.sbatch.%N.err         
 
 #************************************************************
-GRES="gpu:a10:4"
-NPROC_PER_NODE=4
-NNODES=$SLURM_NNODES
-WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
-GLOBAL_BATCH_SIZE=64
-MICRO_BATCH_SIZE=1
-TENSOR_MP_SIZE=1
-DP_SIZE=4
-PIPELINE_MP_SIZE=2
-PARTITION="25-23"
+GRES="gpu:hgx:4"
+. a100-hetero-conf.sh
 #************************************************************
 
 cd $HOME/tdpp/Megatron-LM-2
-mkdir -p ./log2/$SLURM_JOB_ID
+mkdir -p ../log2/$SLURM_JOB_ID
 NODE_LIST=`scontrol show hostnames $SLURM_JOB_NODELIST`
 MASTER_HOST=`echo $NODE_LIST | awk '{print $1}'`
 MASTER_ADDR=`cat /etc/hosts | grep $MASTER_HOST | awk '{print $1}'`
@@ -39,31 +31,27 @@ else
     enroot create -n megatron-latest \$HOME/tdpp/image/nvcr.io+nvidia+pytorch+23.03-py3.sqsh ;
 fi
 
-NODE_LIST=\`scontrol show hostnames \$SLURM_JOB_NODELIST\`
-node_array=(\$NODE_LIST)
-length=\${#node_array[@]}
 hostnode=\`hostname -s\`
-for (( index = 0; index < length ; index++ )); do
-    node=\${node_array[\$index]}
-    if [ \$node == \$hostnode ]; then
-        local_rank=\$index
-    fi
-done 
 
-/usr/local/bin/gpustat -i > \$HOME/tdpp/Megatron-LM-2/log2/\$SLURM_JOB_ID/\$hostnode.gpu &
+# /usr/local/bin/gpustat -i > \$HOME/tdpp/Megatron-LM-2/log2/\$SLURM_JOB_ID/\$hostnode.gpu &
+
+/usr/local/bin/gpustat -i > \$HOME/tdpp/log2/\$SLURM_JOB_ID/\$hostnode.gpu &
 
 enroot start --root \
             --rw \
-            -m \$HOME/tdpp/Megatron-LM-2:/root/Megatron-LM \
+            -m \$HOME/tdpp/Megatron-LM-2:/root/Megatron-LM-2 \
+            -m \$HOME/tdpp/log2:/root/log2 \
             megatron-latest \
-            bash -c "cd /root/Megatron-LM/ && sh run_inter.sh \$local_rank
+            bash -c "cp -r /root/Megatron-LM-2 /root/Megatron-LM && cd /root/Megatron-LM/ && sh run_inter.sh 0
 EOF
 )
+
+# bash -c "cd /root/Megatron-LM/ && sh run_inter.sh 0
 
 
 srun --partition=$SLURM_JOB_PARTITION \
       --gres=$GRES \
       --cpus-per-task=12 \
-      -o ./log2/%j/%N.out \
-      -e ./log2/%j/%N.err \
+      -o ../log2/%j/%N.out \
+      -e ../log2/%j/%N.err \
       bash -c "$ENROOT_SCRIPT $MASTER_ADDR $NPROC_PER_NODE $NNODES $GLOBAL_BATCH_SIZE $MICRO_BATCH_SIZE $TENSOR_MP_SIZE $DP_SIZE $PIPELINE_MP_SIZE $PARTITION \" " 
