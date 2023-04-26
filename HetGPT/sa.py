@@ -333,14 +333,23 @@ def amp_no_placement_strategy(M, N, gbs, known):
     if known is None:
         known = defaultdict(list)
         ele_count = 0
+        W = M * N
         for h in factor(M): # mp
             assert M*N % h == 0
             remain = M*N // h
             for w in factor(remain): # dp
-                assert gbs % w == 0
-                pp_degree = M*N // (h*w)
+                pp_degree = M*N / (h*w)
+                # if pp_degree is not int
+                if pp_degree != int(pp_degree):
+                    continue
+                if (W / pp_degree) % w != 0:
+                    continue
+                if gbs % (w) != 0:
+                    continue
                 if pp_degree > 48: #TODO: args.num_layers
                     continue
+                #if (gbs % M != 0) or (gbs % N != 0):
+                    #continue
                 for mbs in factor(gbs // w):
                     ele_count += 1
                     known[mbs].append((h, w))

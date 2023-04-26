@@ -53,72 +53,61 @@ class Stage:
         return self.comm_time+self.comp_time
 
 def pipe_ast(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, gpu_per_node, dp_degree):
-    time_s = time.time()
-    if num_layer < 27:
-        num_layer = 24
+    # if num_layer < 27:
+    #     num_layer = 24
     pp_per_node = pp_degree // num_node
     num_balanced_layer = num_layer // pp_degree
-    if num_layer%pp_degree != 0:
-        not_balanced = True
-    if num_layer >= 48:
-        if pp_degree ==2:
-            num_balanced_layer = 24
-        if pp_degree ==1:
-            num_balanced_layer = 48
     partition = []
-    max_latency = 1000000
     for i in range(pp_degree):
         partition.append(num_balanced_layer)
-    if pp_degree == 32:
-        partition = [1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1,2]
-    if num_layer <= 26:
-        if pp_degree == 16:
-            partition = [2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1]
-    partition[0] += 1
-    partition[-1] += 1
+    rest = num_layer - (num_balanced_layer * pp_degree)
+    for i in range(rest):
+        partition[i-1] += 1
 
-    print("initial partition is", partition)
-
+    #print(f"\n\nmsb, tp, dp, pp: {int((32/num_mb/dp_degree).item())}, {int((16/pp_degree/dp_degree).item())}, {int(dp_degree.item())}, {pp_degree}")
+    #print(f"initial partition: {partition}")
+    last_max_latency = 1000000
+    counted = False
     while(1):
         stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, gpu_per_node*num_node, pp_degree)
         stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
-
-        if pp_degree == 1 or pp_per_node < 1:
-            break
+        #print("stage_latency", stage_time_lst)
             
         # get index of max and value
 
         # print("stage_latency", stage_latency)
-        print("stage_latency", stage_time_lst)
 
-        last_max_latency = max(stage_time_lst)
+        max_latency = max(stage_time_lst)
         # last_max_latency = max(stage_latency)
 
-        if last_max_latency <= max_latency:
-            max_latency = last_max_latency
-            max_latency_index = stage_time_lst.index(max_latency)
-            # max_latency_index = stage_latency.index(max_latency)
+        if max_latency >= last_max_latency:
+            if counted:
+                partition[max_latency_index] += 1
+                partition[min_latency_index] -= 1
+                stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, pp_per_node, gpu_per_node, gpu_per_node*num_node, pp_degree)
+            #print(f"final partition: {partition}")
+            break
+        last_max_latency = max_latency
+        max_latency_index = stage_time_lst.index(max_latency)
+        # max_latency_index = stage_latency.index(max_latency)
 
-            min_latency = min(stage_time_lst)
-            min_latency_index = stage_time_lst.index(min_latency)
+        min_latency = min(stage_time_lst)
+        min_latency_index = stage_time_lst.index(min_latency)
 
-            # min_latency = min(stage_latency)
-            # min_latency_index = stage_latency.index(min_latency)
+        # min_latency = min(stage_latency)
+        # min_latency_index = stage_latency.index(min_latency)
 
-            if partition[max_latency_index] == 1:
-                break
-            if (max_latency_index == 0 or max_latency_index == pp_degree-1) and partition[max_latency_index] == 2:
-                break
+        if (max_latency_index == 0 or max_latency_index == pp_degree-1) and partition[max_latency_index] == 2:
+            if counted:
+                partition[max_latency_index] += 1
+                partition[min_latency_index] -= 1
+            #print(f"final partition: {partition}")
+            break
+        if partition[max_latency_index]>1:
             partition[max_latency_index] -= 1
             partition[min_latency_index] += 1
-            #print("changed partition", partition)
-        else:
-            #print("latency is not decreasing, break")
-            partition[max_latency_index] += 1
-            partition[min_latency_index] -= 1
-            break
-
-    print(f"pipe_ast used {time.time()-time_s} seconds with {num_layer} layers and {pp_degree} stages.")
+            counted=True
+        #print("changed partition", partition)
     
     stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
     stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
@@ -160,8 +149,6 @@ def pipe_cost(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, s
 
     if not isinstance(cost, torch.Tensor):
         cost = torch.tensor(cost)
-
-    print("estimated pipeline latency:", cost.item())
 
     if ppgroup_cfg["pp_degree"] == 1:
         stage_wise_cost_lst = [cost]
