@@ -1,38 +1,41 @@
 # FASOP: Fast yet Accurate Automatic Search for Optimal Parallelization of a Transformer on Heterogeneous GPU Clusters(ICPP 2023)
 
-This repository include a framework named FASOP that automatically and rapidly finds the optimal degrees of parallelisms and model partitioning of Transformer-based models on heterogeneous GPU clusters, with an accurate estimation of pipelining latency and GPU communications. It can find a configuration that minimizes the cost of GPU clusters while satisfying the training time constraints, or a configuration that minimizes the training time while meeting the cost constraints. FASOP can fast estimate the device configuration for LLM.
+This repository contains FASOP, a framework that automates the process of finding the optimal degrees of parallelism and model partitioning for Transformer-based models on heterogeneous GPU clusters. FASOP accurately estimates pipelining latency and GPU communications, enabling it to find configurations that minimize the cost of GPU clusters while satisfying training time constraints, or configurations that minimize training time while meeting cost constraints. FASOP supports a variety of Transformer-based models and uses advanced algorithms and techniques to rapidly and accurately estimate device configurations.
 
 -----
 
-## Performance
+# Performance
 
-### search time for the optimal partitioning
+## search time for the optimal partitioning
 
-FASOP can not only fast estimate but also find a smiliar configuration.
+FASOP offers fast and efficient model partitioning for Transformer-based models on heterogeneous GPU clusters. With advanced algorithms and techniques, FASOP can rapidly estimate and find optimal model partitioning configurations that minimize training time while meeting cost constraints. Additionally, FASOP can find similar configurations that closely match the optimal configuration.
+**Please note that lower values indicate better performance.**
 
 <p align="center">
 <img src="figs/performance_chart.png" width="500"/>
 </p>
 
-### In real world 
-This pareto chart shows that optimal trade-off between estimated training cost and throughput for a virtual AWS environment.(circle: cluster with A10 GPU node, triangle: heterogeneous GPU cluster, square: cluster with A100 GPU node)
+## Real-World Applications
+Using advanced algorithms and techniques, FASOP can rapidly find optimal device configurations in virtual AWS environments. The Pareto chart below shows the optimal trade-off between estimated training cost and throughput for different GPU clusters, including clusters with A10 GPU nodes, heterogeneous GPU clusters, and clusters with A100 GPU nodes.
 
 <p align="center">
 <img src="figs/pareto-final.png" width="500"/>
 </p>
 
-## Usage
+# Usage
 
-(1) FASOP estimation    
+(1) Finding Optimal Parallel Strategy for GPT on Heterogeneous GPU Clusters.
 (2) As results of FASOP, you can launch practical distributed learning using Megatron-LM.
 
-### FASOP setup
+## Reproducing the Experiments from [FASOP: Fast yet Accurate Automatic Search for Optimal Parallelization of a Transformer on Heterogeneous GPU Clusters]
 
-#### I. setup
+To reproduce the experiments from [FASOP: Fast yet Accurate Automatic Search for Optimal Parallelization of a Transformer on Heterogeneous GPU Clusters], follow these steps:
+
+### 1. Install the necessary dependencies for FASOP. 
 
 - FASOP requires a CPU for estimation tasks.
 - We recommend to create conda environment for test of reproducibility.
-- Python 3.7+, PyTorch 1.7+, CUDA 11.0+ 
+- Python 3.8+, PyTorch 1.7+, CUDA 11.0+, numpy 
 
     ```bash
     cd ~/workspace
@@ -44,43 +47,43 @@ This pareto chart shows that optimal trade-off between estimated training cost a
     ```
 <!-- TODO: pytorch version, Python version test? -->
 
-#### II. run
-
-- `HetGPT.py`: # Hetero node 4 estimation(A100:1,A10:3)
-- `HetGPT-XL.py`: # Hetero node 8,16 estimation(A100:1, A10:7 / A100:1, A10:15)
-- `HetGPT-unlimited.py`: # Hetero node 8,16 estimation(A100:1, A10:7 / A100:1, A10:15)
-
-##### Running FASOP estimation for 4 hetero nodes
-
-
-    
-    cd ~/workspace/FASOP/FASOP
-    python HetGPT.py
-    
-
-
-#### III. report
-
-- output directory location: `~/workspace/FASOP/FASOP/main_logs`
-
+### II. Reproducing Experiment 4.1: Finding Optimal Parallel Strategy for GPT on Heterogeneous GPU Clusters
+To reproduce Experiment 4.1, which involves finding the optimal parallel strategy for the GPT 3.5m model and 1.5b on heterogeneous GPU clusters, follow the steps below. The python codes should be located in the 'FASOP' directory of the FASOP repository. 
+- To reproduce GPT-2 345m experiment, run `FASOP_345m.py`.
     ```bash
-    rank 0: {...}
+    python FASOP_345m.py
     ```
+- To reproduce GPT-2 1.5b experiment, run `FASOP_1.5b.py`.
+    ```bash
+    python FASOP_1.5b.py
+    ```
+To reproduce Experiment 4.2, which involves finding the optimal parallel strategy for the GPT 1.5b model on virtual AWS cluster.
+ - To reproduce Experiment 4.2, run `FASOP_pareto.py`.
+    ```bash
+    python FASOP_pareto.py
+    ```
+Find the results of the experiment. FASOP will output a summary of the optimal parallel strategy for your model on your heterogeneous GPU cluster, including any estimated training time, cost, and other relevant metrics, in a text file. The name of the text file will be `gpt345m.txt`, `gpt1.5b.txt`, and `pareto.txt` located at `~/workspace/FASOP/FASOP/main_logs`, repectively.
+The results file will contain the following fields, separated by ('\*'):
+`rank`, `mbs`, `tp degree`, `dp degree`, `pp degree`, `node_info`, `partition`, `estimated_time`, `pipeline time`, `time of DP`, `time of reducing embedding layers`, `$/step`.
     
 <!-- TODO: write output log-->
 
-### Megatron-LM setup
 
-#### I. setup
+## Run modified Megatron-LM
+
+### I. setup
 
 - `$HOME/tdpp` 경로에 tdpp 폴더를 위치시킵니다.
 - `$HOME/tdpp/image/megatron-latest.sqsh` 경로에 `megatron-latest.sqsh` 파일을 위치시킵니다.
 - `$HOME/tdpp/Megatron-LM-2/log2` 경로에 `log2` 폴더를 생성합니다.
 - `$HOME/tdpp/Megatron-LM-2/log` 경로에 `log` 폴더를 생성합니다.
 
+#### Prepare Wikipedia Training Dataset
+Download Wikipedia data: https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2
+then extract the text with https://github.com/attardi/wikiextractor
 
-#### II. run
-##### 1. run by sbatch
+### II. run
+#### 1. run by sbatch
 
 sbatch.sh 파일과 run_inter.sh 파일을 수정한 후 sbatch 커맨드를 통해서 job을 실행합니다.
 
@@ -119,7 +122,7 @@ sbatch.sh 파일과 run_inter.sh 파일을 수정한 후 sbatch 커맨드를 통
     ```bash
     $ sbatch sbatch.sh
     ```
-##### 2. run by srun
+#### 2. run by srun
 `srun` 커맨드를 통해서 개별 노드에 직접 접속하여 job을 실행할 수 있습니다.
 
 ```bash
@@ -142,7 +145,7 @@ enroot start --root \
                     sh $SCRIPT_NAME $NODE_RANK $MASTER_ADDR"
 ```
 
-#### III. report
+### III. report
 
 실행 로그는 다음 경로에 저장됩니다.
 - sbatch 로그: `$HOME/tdpp/Megatron-LM-2/log2/JOBID.sbatch.NODE.out, err`
@@ -157,7 +160,7 @@ tail -f $HOME/tdpp/Megatron-LM-2/log2/JOBID/NODE-gpu.log
 ```
 
 
-#### IV. Profile with Torch Profiler
+### IV. Profile with Torch Profiler
 
 아래 경로에서 training.py가 오리지널 파일인지, torch profiler가 작동하는 파일인지 확인합니다.
 
@@ -179,7 +182,7 @@ tensorboard --logdir=./log/temp --bind_all
 자세한 방법은 문의하세요.
 
 
-#### V. Profile layer by layer execution time
+### V. Profile layer by layer execution time
 
 레이어별 연산시간 프로파일링은 AMP의 재료로 사용하기 위해 필요합니다.
 1. 먼저 `Megatron-LM-2/megatron/` 경로로 이동합니다.
@@ -193,4 +196,14 @@ tensorboard --logdir=./log/temp --bind_all
 <a id="2">[2]</a> 
 - Narayanan, Deepak, et al. "Efficient large-scale language model training on gpu clusters using megatron-lm." Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis. 2021. [the paper link](https://dl.acm.org/doi/abs/10.1145/3458817.3476209)
 
-## Contact
+<a id="2">[3]</a> 
+@misc{Wikiextractor2015,
+  author = {Giusepppe Attardi},
+  title = {WikiExtractor},
+  year = {2015},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/attardi/wikiextractor}}
+}
+
+<!-- anonymous라서 contact는 지움-->
