@@ -42,8 +42,8 @@ To reproduce the experiments from [FASOP: Fast yet Accurate Automatic Search for
     git clone https://github.com/{git_id}/FASOP
     conda create -name fasop python=3.8
     conda activate fasop
-    conda install numpy ninja pyyaml mkl mkl-include setuptools cmake cffi typing_extensions future six requests
-    pip install tqdm spur torch==1.7.1+cu110 torchvision==0.8.2+cu110 -f https://download.pytorch.org/whl/torch_stable.html
+    conda install numpy
+    pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 -f https://download.pytorch.org/whl/torch_stable.html
     ```
 <!-- TODO: pytorch version, Python version test? -->
 
