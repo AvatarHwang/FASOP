@@ -50,18 +50,24 @@ To reproduce the experiments from [FASOP: Fast yet Accurate Automatic Search for
 ### II. Reproducing Experiment 4.1: Finding Optimal Parallel Strategy for GPT on Heterogeneous GPU Clusters
 To reproduce Experiment 4.1, which involves finding the optimal parallel strategy for the GPT 3.5m model and 1.5b on heterogeneous GPU clusters, follow the steps below. The python codes should be located in the 'FASOP' directory of the FASOP repository. 
 - To reproduce GPT-2 345m experiment, run `FASOP_345m.py`.
+
     ```bash
     python FASOP_345m.py
     ```
+
 - To reproduce GPT-2 1.5b experiment, run `FASOP_1.5b.py`.
+
     ```bash
     python FASOP_1.5b.py
     ```
+
 To reproduce Experiment 4.2, which involves finding the optimal parallel strategy for the GPT 1.5b model on virtual AWS cluster.
  - To reproduce Experiment 4.2, run `FASOP_pareto.py`.
+
     ```bash
     python FASOP_pareto.py
     ```
+    
 Find the results of the experiment. FASOP will output a summary of the optimal parallel strategy for your model on your heterogeneous GPU cluster, including any estimated training time, cost, and other relevant metrics, in a text file. The name of the text file will be `gpt345m.txt`, `gpt1.5b.txt`, and `pareto.txt` located at `~/workspace/FASOP/FASOP/main_logs`, repectively.
 The results file will contain the following fields, separated by ('\*'):
 `rank`, `mbs`, `tp degree`, `dp degree`, `pp degree`, `node_info`, `partition`, `estimated_time`, `pipeline time`, `time of DP`, `time of reducing embedding layers`, `$/step`.
