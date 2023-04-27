@@ -1,4 +1,3 @@
-Megatron-LM-3
 build
 build-bk
 log2
@@ -12,11 +11,6 @@ __pycache__
 
 distribute-test*
 log-nsys
-net-speed-server.sh
-
-.nfs*
-log-bakcup
-image
 image/nvcr.io+nvidia+pytorch+23.03-py3.sqsh
 FASOP_bk/amp_utils.py
 FASOP_bk/estimate.py

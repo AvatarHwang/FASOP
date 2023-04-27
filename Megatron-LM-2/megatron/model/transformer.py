@@ -849,10 +849,10 @@ def _get_num_layers(args, is_encoder_and_decoder_model, is_decoder=False):
             else:
                 if args.balance :
                     num_layers = int(args.balance[mpu.get_pipeline_model_parallel_rank()])
-                    # print("num_layers", num_layers)
+                    print("num_layers", num_layers)
                 else:
                     num_layers = args.decoder_num_layers // num_ranks_in_decoder
-                    # print("num_layers", num_layers)
+                    print("num_layers", num_layers)
         else:
             #assert args.num_layers == args.encoder_num_layers
             #assert args.num_layers % args.transformer_pipeline_model_parallel_size == 0, \
