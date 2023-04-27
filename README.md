@@ -1,6 +1,77 @@
+# FASOP: Fast yet Accurate Automatic Search for Optimal Parallelization of a Transformer on Heterogeneous GPU Clusters(ICPP 2023)
+
+This repository include a framework named FASOP that automatically and rapidly finds the optimal degrees of parallelisms and model partitioning of Transformer-based models on heterogeneous GPU clusters, with an accurate estimation of pipelining latency and GPU communications. It can find a configuration that minimizes the cost of GPU clusters while satisfying the training time constraints, or a configuration that minimizes the training time while meeting the cost constraints. FASOP can fast estimate the device configuration for LLM.
+
+-----
+
+## Performance
+
+### search time for the optimal partitioning
+
+FASOP can not only fast estimate but also find a smiliar configuration.
+
+<p align="center">
+<img src="figs/performance_chart.png" width="500"/>
+</p>
+
+### In real world 
+This pareto chart shows that optimal trade-off between estimated training cost and throughput for a virtual AWS environment.(circle: cluster with A10 GPU node, triangle: heterogeneous GPU cluster, square: cluster with A100 GPU node)
+
+<p align="center">
+<img src="figs/pareto-final.png" width="500"/>
+</p>
+
+## Usage
+
+(1) FASOP estimation    
+(2) As results of FASOP, you can launch practical distributed learning using Megatron-LM.
+
+### FASOP setup
+
+#### I. setup
+
+- FASOP requires a CPU for estimation tasks.
+- We recommend to create conda environment for test of reproducibility.
+- Python 3.7+, PyTorch 1.7+, CUDA 11.0+ 
+
+    ```bash
+    cd ~/workspace
+    git clone https://github.com/{git_id}/FASOP
+    conda create -name fasop python=3.8
+    conda activate fasop
+    conda install numpy ninja pyyaml mkl mkl-include setuptools cmake cffi typing_extensions future six requests
+    pip install tqdm spur torch==1.7.1+cu110 torchvision==0.8.2+cu110 -f https://download.pytorch.org/whl/torch_stable.html
+    ```
+<!-- TODO: pytorch version, Python version test? -->
+
+#### II. run
+
+- `HetGPT.py`: # Hetero node 4 estimation(A100:1,A10:3)
+- `HetGPT-XL.py`: # Hetero node 8,16 estimation(A100:1, A10:7 / A100:1, A10:15)
+- `HetGPT-unlimited.py`: # Hetero node 8,16 estimation(A100:1, A10:7 / A100:1, A10:15)
+
+##### Running FASOP estimation for 4 hetero nodes
 
 
-## I. setup
+    
+    cd ~/workspace/FASOP/FASOP
+    python HetGPT.py
+    
+
+
+#### III. report
+
+- output directory location: `~/workspace/FASOP/FASOP/main_logs`
+
+    ```bash
+    rank 0: {...}
+    ```
+    
+<!-- TODO: write output log-->
+
+### Megatron-LM setup
+
+#### I. setup
 
 - `$HOME/tdpp` 경로에 tdpp 폴더를 위치시킵니다.
 - `$HOME/tdpp/image/megatron-latest.sqsh` 경로에 `megatron-latest.sqsh` 파일을 위치시킵니다.
@@ -8,8 +79,8 @@
 - `$HOME/tdpp/Megatron-LM-2/log` 경로에 `log` 폴더를 생성합니다.
 
 
-## II. run
-### 1. run by sbatch
+#### II. run
+##### 1. run by sbatch
 
 sbatch.sh 파일과 run_inter.sh 파일을 수정한 후 sbatch 커맨드를 통해서 job을 실행합니다.
 
@@ -48,8 +119,7 @@ sbatch.sh 파일과 run_inter.sh 파일을 수정한 후 sbatch 커맨드를 통
     ```bash
     $ sbatch sbatch.sh
     ```
-
-### 2. run by srun
+##### 2. run by srun
 `srun` 커맨드를 통해서 개별 노드에 직접 접속하여 job을 실행할 수 있습니다.
 
 ```bash
@@ -72,8 +142,7 @@ enroot start --root \
                     sh $SCRIPT_NAME $NODE_RANK $MASTER_ADDR"
 ```
 
-
-## III. report
+#### III. report
 
 실행 로그는 다음 경로에 저장됩니다.
 - sbatch 로그: `$HOME/tdpp/Megatron-LM-2/log2/JOBID.sbatch.NODE.out, err`
@@ -88,7 +157,7 @@ tail -f $HOME/tdpp/Megatron-LM-2/log2/JOBID/NODE-gpu.log
 ```
 
 
-## IV. Profile with Torch Profiler
+#### IV. Profile with Torch Profiler
 
 아래 경로에서 training.py가 오리지널 파일인지, torch profiler가 작동하는 파일인지 확인합니다.
 
@@ -110,9 +179,18 @@ tensorboard --logdir=./log/temp --bind_all
 자세한 방법은 문의하세요.
 
 
-## V. Profile layer by layer execution time
+#### V. Profile layer by layer execution time
 
 레이어별 연산시간 프로파일링은 AMP의 재료로 사용하기 위해 필요합니다.
 1. 먼저 `Megatron-LM-2/megatron/` 경로로 이동합니다.
 2. 기존 training.py를 삭제하고 training-profile_LBL.py를 training.py로 변경합니다.
 3. 메가트론을 실행합니다. 실행 파일은 `LayerByLayer_profile.sh` 입니다. 연산시간은 마스터노드에서 리스트 형태로 출력됩니다.
+
+## References
+<a id="1">[1]</a> 
+- Li, Dacheng, et al. "AMP: Automatically Finding Model Parallel Strategies with Heterogeneity Awareness." arXiv preprint arXiv:2210.07297 (2022). [the paper link](https://arxiv.org/abs/2210.07297)
+
+<a id="2">[2]</a> 
+- Narayanan, Deepak, et al. "Efficient large-scale language model training on gpu clusters using megatron-lm." Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis. 2021. [the paper link](https://dl.acm.org/doi/abs/10.1145/3458817.3476209)
+
+## Contact
