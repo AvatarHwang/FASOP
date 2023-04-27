@@ -1,13 +1,21 @@
+"""
+Portions of this code adapted from the 'AMP' project (https://github.com/DachengLi1/AMP). 
+@article{li2022amp,
+  title={AMP: Automatically Finding Model Parallel Strategies with Heterogeneity Awareness},
+  author={Li, Dacheng and Wang, Hongyi and Xing, Eric and Zhang, Hao},
+  journal={arXiv preprint arXiv:2210.07297},
+  year={2022}
+}
+"""
 import time
 
 import os
 import numpy as np
 
 import torch
-from torch import optim as optim
 
-from sa import amp_no_placement_strategy
-from cost_het_cluster import HetGPT, EstimatePeakMemory
+from amp_utils import amp_no_placement_strategy
+from estimate import FASOP, EstimatePeakMemory
 
 import argparse
 
@@ -33,27 +41,13 @@ time_s = time.time()
 gpu_per_node = args.gpu_per_node
 
 home_path = os.environ['HOME']
-dir_path = os.path.join(home_path, 'tdpp/HetGPT/main_logs')
+dir_path = os.path.join(home_path, 'tdpp/FASOP/main_logs')
 if not os.path.exists(dir_path):
     os.mkdir(dir_path)
 
 a100 = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
 a10 = [torch.tensor([100 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
-# cluster_combinations=[]
-# node_nounter = 0
-# for i in range(args.num_node+1):
-#     for j in range(0, i):
-#         cluster = {}
-#         n_a100 = j
-#         n_a10 = i-j
-#         for k in range(i):
-#             # if k <= n_a100 and n_a100!=0:
-#                 cluster[k] = a100
-#             else:
-#                 cluster[k] = a10
-#         cluster_combinations.append(cluster)
-#         node_nounter += 1
 cluster_combinations=[]
 node_nounter = 0
 for node_num in range(1, args.num_node+1):
@@ -69,35 +63,12 @@ for node_num in range(1, args.num_node+1):
         node_nounter += 1
 
 print(f"Number of clusters combinations: {node_nounter}")
-"""
-for cluster_info in cluster_combinations:
-    num_node = len(cluster_info.keys())
-    gpu_of_cluster = []
-    n_a100=0
-    for i in range(num_node):
-        if cluster_info[i][1] == torch.tensor([4800 * 1e9]).float():
-           gpu_of_cluster.append('p4d.24xlarge')
-           n_a100+=1
-        else:
-            gpu_of_cluster.append('g5.24xlarge')
-    n_a10 = num_node - n_a100
-    print(f"Number of A100: {n_a100}, Number of A10: {n_a10}")
-assert 1==2
-"""
+
 want_simulate = [] 
 
-time_stamp = int(time.time())
-exp_name = f"het_cluster"
-record_file = f"{os.path.join(dir_path, exp_name)}_{time_stamp}.txt"
+exp_name = f"pareto"
+record_file = f"{os.path.join(dir_path, exp_name)}.txt"
 
-# remove cache directory from last run
-if os.path.exists(os.path.join(home_path, "tmp")):
-    for root, dirs, files in os.walk(os.path.join(home_path, "tmp")):
-        for f in files:
-            os.unlink(os.path.join(root, f))
-
-# save this name to env
-os.environ["amp_log_path"] = record_file
 
 model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
                 "sequence_length": torch.tensor([1024]).float(), 
@@ -105,7 +76,7 @@ model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(),
                 "vocab_size":torch.tensor([50257]).float(),
                 "num_attention_heads": torch.tensor([16]).float(),
                 "type":args.type,
-                "precision":torch.tensor([int(args.precision)]).float()} # egi: add precision argument
+                "precision":torch.tensor([int(args.precision)]).float()} 
 
 config_h = int((model_config["hidden_size"]).item())
 config_n = int(model_config["num_layers"].item())
@@ -129,21 +100,11 @@ for cluster_info in cluster_combinations:
             gpu_of_cluster.append('g5.24xlarge')
     n_a10 = num_node - n_a100
 
-
-    # time_stamp = int(time.time())
-    # exp_name = f"het_cluster"
-    # record_file = f"{os.path.join(dir_path, exp_name)}_{time_stamp}.txt"
-
     if num_node == n_a100:
-        model = HetGPT(model_config, exp_name, cluster_info[0], cluster_info[0], len(cluster_info))
+        model = FASOP(model_config, exp_name, cluster_info[0], cluster_info[0], len(cluster_info))
     else:
-        model = HetGPT(model_config, exp_name, cluster_info[0], cluster_info[n_a100], len(cluster_info))
-    #print(f"gbs:{gbs}, gpu_per_node:{gpu_per_node}, num_node:{num_node}")
-    #assert (gbs % gpu_per_node == 0) and (gbs % num_node == 0), "global batch size is too irrgular"
-
-    # with open(record_file, "a") as fp:
-    #     fp.write(f"{model_config}\n")                
-    #     fp.write(f"gbs:{gbs}\n")                
+        model = FASOP(model_config, exp_name, cluster_info[0], cluster_info[n_a100], len(cluster_info))
+            
     known = None
 
     # Estimating best configurations

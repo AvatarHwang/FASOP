@@ -1,25 +1,34 @@
+"""
+Portions of this code adapted from the 'AMP' project (https://github.com/DachengLi1/AMP). 
+@article{li2022amp,
+  title={AMP: Automatically Finding Model Parallel Strategies with Heterogeneity Awareness},
+  author={Li, Dacheng and Wang, Hongyi and Xing, Eric and Zhang, Hao},
+  journal={arXiv preprint arXiv:2210.07297},
+  year={2022}
+}
+"""
+
 import time
 
 import os
 import numpy as np
 
 import torch
-from torch import optim as optim
 
-from sa import amp_no_placement_strategy
-from cost_het_cluster import HetGPT
+from amp_utils import amp_no_placement_strategy
+from estimate import FASOP
 
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--gbs", type=int, default=32)
+parser.add_argument("--gbs", type=int, default=64)
 parser.add_argument("--exp_name", type=str, default="het_cluster")
-parser.add_argument("--model_config", type=str, default="gpt2")
-parser.add_argument("--hidden_size", type=int, default=1024)
+parser.add_argument("--model_config", type=str, default="gpt2XL")
+parser.add_argument("--hidden_size", type=int, default=1600)
 parser.add_argument("--sequence_length", type=int, default=1024)
-parser.add_argument("--num_layers", type=int, default=24)
+parser.add_argument("--num_layers", type=int, default=48)
 parser.add_argument("--vocab_size", type=int, default=50257)
-parser.add_argument("--type", type=str, default="gpt2")
+parser.add_argument("--type", type=str, default="gpt2XL")
 parser.add_argument("--gpu_per_node", type=int, default=4)
 parser.add_argument("--num_attention_heads", type=int, default=16)
 parser.add_argument("--precision", type=int, default=16)
@@ -30,50 +39,23 @@ time_s = time.time()
 gpu_per_node = args.gpu_per_node
 
 home_path = os.environ['HOME']
-dir_path = os.path.join(home_path, 'tdpp/HetGPT/main_logs')
+dir_path = os.path.join(home_path, 'tdpp/FASOP/main_logs')
 if not os.path.exists(dir_path):
     os.mkdir(dir_path)
 
-cluster_info0 = {} # a100:4 + a10:4     2 x nodes
-cluster_info1 = {} # a10:8              2 x nodes
-cluster_info2 = {} # a100:4 + a10:12    4 x nodes
-cluster_info3 = {} # a10:16             4 x nodes
+
 cluster_info4 = {} # a100:4 : a10:28    8 x nodes
-cluster_info5 = {} # a10:32             8 x nodes
-cluster_info6 = {} # a10:64             16 x nodes
 cluster_info7 = {} # a100:4, a10:60     16 x nodes
 
-# get all possible combinations of clusters, but append only not duplicated ones
-# cluster_info0[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
-# cluster_info0[1] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+cluster_info4[0] = [torch.tensor([40 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
+for i in range(1, 8):
+    cluster_info4[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
-# cluster_info1[0] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-# cluster_info1[1] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+cluster_info7[0] = [torch.tensor([40 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
+for i in range(1,16):
+    cluster_info7[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
-cluster_info2[0] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-cluster_info2[1] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-cluster_info2[2] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-cluster_info2[3] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-
-# for i in range(4):
-#     cluster_info3[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-
-# cluster_info4[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
-# for i in range(1, 8):
-#     cluster_info4[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-
-# for i in range(8):
-#     cluster_info5[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-
-# for i in range(16):
-#     cluster_info6[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-
-# cluster_info7[0] = [torch.tensor([400 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
-# for i in range(1,16):
-#     cluster_info7[i] = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
-
-#cluster_combinations = [cluster_info0, cluster_info1, cluster_info2, cluster_info3, cluster_info4, cluster_info5, cluster_info6, cluster_info7]
-cluster_combinations = [cluster_info2]
+cluster_combinations = [cluster_info4, cluster_info7]
 want_simulate = [] 
 
 for cluster_info in cluster_combinations:
@@ -86,18 +68,17 @@ for cluster_info in cluster_combinations:
             gpu_of_cluster.append('g5.12xlarge')
 
     model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
-                    "sequence_length": torch.tensor([1024]).float(), 
-                    "num_layers": torch.tensor([24]).float(), 
-                    "vocab_size":torch.tensor([50257]).float(),
-                    "num_attention_heads": torch.tensor([16]).float(),
+                    "sequence_length": torch.tensor([int(args.sequence_length)]).float(), 
+                    "num_layers": torch.tensor([int(args.num_layers)]).float(), 
+                    "vocab_size":torch.tensor([int(args.vocab_size)]).float(),
+                    "num_attention_heads": torch.tensor([int(args.num_attention_heads)]).float(),
                     "type":args.type,
                     "precision":torch.tensor([int(args.precision)]).float()} # egi: add precision argument
 
     config_h = int((model_config["hidden_size"]).item())
     config_n = int(model_config["num_layers"].item())
-    time_stamp = int(time.time())
-    exp_name = f"het_cluster"
-    record_file = f"{os.path.join(dir_path, exp_name)}_{time_stamp}.txt"
+    exp_name = f"gpt1.5b"
+    record_file = f"{os.path.join(dir_path, exp_name)}.txt"
 
     # remove cache directory from last run
     if os.path.exists(os.path.join(home_path, "tmp")):
@@ -109,7 +90,7 @@ for cluster_info in cluster_combinations:
     os.environ["amp_log_path"] = record_file
 
     gbs = int(args.gbs)
-    model = HetGPT(model_config, exp_name, cluster_info[0], cluster_info[1], len(cluster_info))
+    model = FASOP(model_config, exp_name, cluster_info[0], cluster_info[1], len(cluster_info))
     assert (gbs % gpu_per_node == 0) and (gbs % num_node == 0), "global batch size is too irrgular"
 
     # with open(record_file, "a") as fp:
