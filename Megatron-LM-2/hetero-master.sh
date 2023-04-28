@@ -3,7 +3,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=hgx
 #SBATCH --gres=gpu:hgx:4
-#SBATCH --cpus-per-task=28
+#SBATCH --cpus-per-task=14
 #SBATCH -o ../log2/%j.sbatch.%N.out         
 #SBATCH -e ../log2/%j.sbatch.%N.err         
 

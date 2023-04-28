@@ -3,11 +3,7 @@
 
 build
 build-bk
-log2
-log2/*
 log-backup
-log
-log/*
 Megatron-LM-3
 AMP
 my-gpt2_text_document_train_*

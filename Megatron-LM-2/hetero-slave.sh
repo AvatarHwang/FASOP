@@ -17,7 +17,7 @@ cd $HOME/tdpp/Megatron-LM-2
 mkdir -p ../log2/$SLURM_JOB_ID
 NODE_LIST=`scontrol show hostnames $SLURM_JOB_NODELIST`
 echo $NODE_LIST
-MASTER_ADDR=192.168.120.60
+MASTER_ADDR=192.XXX.XXX.XX
 echo $MASTER_ADDR
 ENROOT_SCRIPT=$(cat <<EOF
 CONTAINER_PATH="/scratch/enroot/\$UID/data/megatron-latest"

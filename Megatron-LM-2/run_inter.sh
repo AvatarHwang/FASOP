@@ -22,7 +22,6 @@ echo "DP_SIZE: $DP_SIZE"
 echo "PIPELINE_MP_SIZE: $PIPELINE_MP_SIZE"
 echo "PARTITION: $PARTITION"
 
-
 DISTRIBUTED_ARGS="--nproc_per_node $NPROC_PER_NODE \
                   --nnodes $NNODES \
                   --node_rank $NODE_RANK \
@@ -54,27 +53,10 @@ MODEL_ARGS="--num-layers 48 \
         --fp16 \
         --balance $PARTITION" 
 
-# OUTPUT_ARGS="--log-interval 1 \
-#              --timing-log-level 2 \
-#              --timing-log-option all \
-#              --save-interval 100 \
-#              --eval-interval 100 \
-#              --eval-iters 10"
-
-# OUTPUT_ARGS="--log-interval 10 \
-#             --timing-log-level 2 \
-#             --timing-log-option all \
-#             --save-interval 100 \
-#             --eval-interval 100 \
-#             --eval-iters 10"
-
 OUTPUT_ARGS="--log-interval 10 \
               --save-interval 100 \
               --eval-interval 100 \
               --eval-iters 10"
-
-# TENSORBOARD_ARGS="--tensorboard-dir /root/Megatron-LM/tensorboard \
-#                 --tensorboard-log-interval 10"
 
 hostname
 

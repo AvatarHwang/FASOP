@@ -99,94 +99,62 @@ FASOP will output a summary of the optimal parallel strategy for your model on y
 
 ## Run modified Megatron-LM
 
-### I. setup
+### I. Environment
 
-- `$HOME/tdpp` 경로에 tdpp 폴더를 위치시킵니다.
-- `$HOME/tdpp/image/megatron-latest.sqsh` 경로에 `megatron-latest.sqsh` 파일을 위치시킵니다.
-- `$HOME/tdpp/Megatron-LM-2/log2` 경로에 `log2` 폴더를 생성합니다.
-- `$HOME/tdpp/Megatron-LM-2/log` 경로에 `log` 폴더를 생성합니다.
+- slurm 20.11.4
+  - 4 * NVIDIA A100 * 1 nodes
+  - 4 * NVIDIA A10 * 16 nodes
+- enroot 3.4.0
+- container image: `nvcr.io/nvidia/pytorch:23.04-py3`
 
-#### Prepare Wikipedia Training Dataset
+### II. Prepare Wikipedia Training Dataset
 Download Wikipedia data: https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2
 then extract the text with https://github.com/attardi/wikiextractor
 
-### II. run
-#### 1. run by sbatch
+### III. run
+#### 1. run without slurm.
+You can run Megatron without relying on Slurm and Enroot. If Docker is installed on every node, you can carry out multi-GPU training across different architectures using the provided script. Just keep in mind that the node with the high-performance GPU should be designated as the master node.
+```
+$ cd ~
 
-sbatch.sh 파일과 run_inter.sh 파일을 수정한 후 sbatch 커맨드를 통해서 job을 실행합니다.
+$ git clone https://github.com/{git_id}/FASOP
 
-- `$HOME/tdpp/Megatron-LM-2/sbatch.sh` 파일을 적절히 수정합니다.
-    ```bash
-    #!/bin/bash
-    #SBATCH --nodes=4
-    #SBATCH --ntasks-per-node=1
-    #SBATCH --partition=gpu2
-    #SBATCH --nodelist=n063,n064,n065,n066
-    #SBATCH --gres=gpu:a10:4,gpu:a10:4,gpu:a10:4,gpu:a10:4
-    #SBATCH --cpus-per-task=28
-    #SBATCH -o ./log2/%j.sbatch.%N.out         # STDOUT
-    #SBATCH -e ./log2/%j.sbatch.%N.err         # STDERR
-    ```
+$ docker run --gpus all \
+    -it \
+    -p 6787:6787 \
+    --mount type=bind,source="$HOME/FASOP/Megatron-LM-2",target=/root/Megatron-LM-2 \
+    --mount type=bind,source="$HOME/FASOP/log2", target=/root/log2 \
+    --mount type=bind,source="$HOME/FASOP/$INDEXMAP_DIR",target=/root/indexmap \
+    nvcr.io/nvidia/pytorch:23.04-py3 bash
 
-- `$HOME/tdpp/Megatron-LM-2/run-inter.sh` 파일을 적절히 수정합니다.
-    ```bash
-    #!/bin/bash
-    NODE_RANK=$1
-    MASTER_ADDR=$2
-    NPROC_PER_NODE=4
-    NNODES=4
-    WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
+(in container)# bash run_inter $NODE_RANK \
+                    $MASTER_ADDR \
+                    $NPROC_PER_NODE \
+                    $NNODES \
+                    $GLOBAL_BATCH_SIZE \
+                    $MICRO_BATCH_SIZE \
+                    $TENSOR_MP_SIZE \
+                    $DP_SIZE \
+                    $PIPELINE_MP_SIZE \
+                    $PARTITION > /root/log2/$NODE_RANK.out
 
-    MICRO_BATCH_DIM=1
-    TENSOR_MP_SIZE=1
-    PIPELINE_MP_SIZE=4
-    DP_SIZE=$((WORLD_SIZE/PIPELINE_MP_SIZE/TENSOR_MP_SIZE))
-
-    GLOBAL_BATCH_SIZE=$((32*MICRO_BATCH_DIM))
-    MICRO_BATCH_SIZE=$((GLOBAL_BATCH_SIZE/DP_SIZE/MICRO_BATCH_DIM/PIPELINE_MP_SIZE))
-    ```
-
-- `sbatch`
-    ```bash
-    $ sbatch sbatch.sh
-    ```
-#### 2. run by srun
-`srun` 커맨드를 통해서 개별 노드에 직접 접속하여 job을 실행할 수 있습니다.
-
-```bash
-PARTITION=gpu2
-GRES=gpu:a10:4
-NODE=n062
-NODE_RANK=0
-MASTER_ADDR=
-
-srun --cpus-per-task 28 -p $PARTITION --nodelist $NODE --gres=$GRES --pty bash
-container_path="/scratch/enroot/$UID/data/megatron-latest"
-test -d $container_path && 
-    rm -rf $container_path
-enroot create $HOME/tdpp/image/megatron-latest.sqsh
-SCRIPT_NAME='run_inter.sh'
-enroot start --root \
-            --rw \
-            -m $HOME/tdpp/Megatron-LM:/root/Megatron-LM megatron-latest \
-            bash -c "cd /root/Megatron-LM/ &&\
-                    sh $SCRIPT_NAME $NODE_RANK $MASTER_ADDR"
 ```
 
-### III. report
+#### 2. run with slurm and enroot.
 
-실행 로그는 다음 경로에 저장됩니다.
-- sbatch 로그: `$HOME/tdpp/Megatron-LM-2/log2/JOBID.sbatch.NODE.out, err`
-- srun 로그: `$HOME/tdpp/Megatron-LM-2/log2/JOBID/NODE.out, err`
-- gpu 사용량 로그: `$HOME/tdpp/Megatron-LM-2/log2/JOBID/NODE-gpu.log`
+If you use Slurm and Enroot, you can easily run jobs on multiple nodes. To start the training process, you first need to adjust the desired training conditions in the hetero-conf.sh file. Afterwards, you can run the master and slave jobs by executing the ./submit-hetero.sh script.
 
-job을 실행한 후 다음 명령어를 통해서 gpu 사용량, 노드별 std out 등을 확인할 수 있습니다.
-
-```bash
-tail -f $HOME/tdpp/Megatron-LM-2/log2/JOBID/NODE.out
-tail -f $HOME/tdpp/Megatron-LM-2/log2/JOBID/NODE-gpu.log
 ```
+$ cd ~
 
+$ git clone https://github.com/{git_id}/FASOP
+
+$ cd ./FASOP/Megatron-LM-2
+
+$ vim ./hetero-conf.sh
+
+$ ./submit-hetero.sh
+```
 
 ### IV. Profile with Torch Profiler
 
