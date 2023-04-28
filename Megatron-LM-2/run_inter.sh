@@ -76,8 +76,8 @@ OUTPUT_ARGS="--log-interval 10 \
 # TENSORBOARD_ARGS="--tensorboard-dir /root/Megatron-LM/tensorboard \
 #                 --tensorboard-log-interval 10"
 
-
 hostname
+
 OMP_NUM_THREADS=4 python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_gpt.py \
                 $MODEL_ARGS \
                 $OUTPUT_ARGS \
