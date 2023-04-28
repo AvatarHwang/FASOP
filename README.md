@@ -101,10 +101,10 @@ FASOP will output a summary of the optimal parallel strategy for your model on y
 
 ### I. Environment
 
-- slurm 20.11.4
-  - 4 * NVIDIA A100 * 1 nodes
-  - 4 * NVIDIA A10 * 16 nodes
-- enroot 3.4.0
+We ran our experiment in an environment where slurm and enroot were installed. However, if you prefer, it is also possible to perform the same test smoothly without slurm by using Docker.
+
+- slurm version: 20.11.4
+- enroot version: 3.4.0
 - container image: `nvcr.io/nvidia/pytorch:23.04-py3`
 
 ### II. Prepare Wikipedia Training Dataset
@@ -142,7 +142,7 @@ $ docker run --gpus all \
 
 #### 2. run with slurm and enroot.
 
-If you use Slurm and Enroot, you can easily run jobs on multiple nodes. To start the training process, you first need to adjust the desired training conditions in the hetero-conf.sh file. Afterwards, you can run the master and slave jobs by executing the ./submit-hetero.sh script.
+If you use Slurm and Enroot, you can easily run jobs on multiple nodes. To start the training process, you first need to adjust the desired training conditions in the `hetero-conf.sh` file. Afterwards, you can run the master and slave jobs by executing the `./submit-hetero.sh `script.
 
 ```
 $ cd ~
