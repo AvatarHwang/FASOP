@@ -31,6 +31,11 @@ DISTRIBUTED_ARGS="--nproc_per_node $NPROC_PER_NODE \
 
 VOCAB_FILE=gpt2-vocab.json
 MERGE_FILE=gpt2-merges.txt
+
+cp -r /root/indexmap/* /root/Megatron-LM
+
+ls /root/Megatron-LM/my-gpt2_text_document*
+
 DATA_PATH=/root/Megatron-LM/my-gpt2_text_document
 MODEL_ARGS="--num-layers 48 \
         --hidden-size 1600 \
@@ -49,10 +54,24 @@ MODEL_ARGS="--num-layers 48 \
         --fp16 \
         --balance $PARTITION" 
 
+# OUTPUT_ARGS="--log-interval 1 \
+#              --timing-log-level 2 \
+#              --timing-log-option all \
+#              --save-interval 100 \
+#              --eval-interval 100 \
+#              --eval-iters 10"
+
+# OUTPUT_ARGS="--log-interval 10 \
+#             --timing-log-level 2 \
+#             --timing-log-option all \
+#             --save-interval 100 \
+#             --eval-interval 100 \
+#             --eval-iters 10"
+
 OUTPUT_ARGS="--log-interval 10 \
-             --save-interval 100 \
-             --eval-interval 100 \
-             --eval-iters 10"
+              --save-interval 100 \
+              --eval-interval 100 \
+              --eval-iters 10"
 
 # TENSORBOARD_ARGS="--tensorboard-dir /root/Megatron-LM/tensorboard \
 #                 --tensorboard-log-interval 10"

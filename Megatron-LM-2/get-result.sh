@@ -27,7 +27,6 @@ else
     cat ${arr[1]} | grep NODE_RANK -A 8
 fi
 
-
 echo "******************* iteration time *******************"
 for num in {1..5}
 do
@@ -35,3 +34,14 @@ num="$num"0
 var=`cat ../log2/$jobid/*.out | grep "iteration       $num/"`
 echo  $var | awk -F'iteration \\(ms\\)\\:' '{print $2}' | awk -v val=$num '{print "iteration " val " : " $1/1000 " s"}'
 done
+
+var=`cat ../log2/$jobid/*.out | grep "iteration       11/"`
+echo  $var | awk -F'iteration \\(ms\\)\\:' '{print $2}' | awk '{print "debug? "  " : " $1/1000 }'
+
+# echo "******************* iteration time *******************"
+# for num in {1..50}
+# do
+# num="$num"
+# var=`cat ../log2/$jobid/*.out | grep  -e "iteration       $num/" -e "iteration        $num/"`
+# echo  $var | awk -F'iteration \\(ms\\)\\:' '{print $2}' | awk -v val=$num '{print "iteration " val " : " $1/1000 " s"}'
+# done

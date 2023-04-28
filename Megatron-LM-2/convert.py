@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 def conv_array(array):
-    num_list = array
-    # num_list = list(map(int, array.strip().split(",")))
+    # num_list = array
+    num_list = list(map(int, array.strip().split(",")))
 
     balance= ''
     for i in range(len(num_list)-1):
@@ -25,16 +25,29 @@ def conv_array(array):
     print("-".join(num_list))
     return "-".join(num_list)
 
-conv_array([18, 11, 10, 11])
-conv_array([9, 7, 6, 6, 5, 6, 5, 6])
-conv_array([5, 4, 4, 4, 3, 3, 3, 3, 2, 3, 3, 3, 2, 2, 3, 3])
-conv_array([18, 11, 10, 11])
-conv_array([9, 7, 6, 6, 5, 6, 5, 6])
-conv_array([5, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3])
-conv_array([11, 6, 6, 6, 5, 5, 5, 6])
+
+# conv_array([4, 3, 3, 3, 3, 3, 3, 4])
+# conv_array([8, 5, 6, 7])
+
+# conv_array([4, 3, 3, 3, 3, 3, 3, 4])
+# conv_array([8, 5, 6, 7])
+
+
+# conv_array([6, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3])
+# conv_array([8, 7, 6, 6, 6, 6, 6, 5])
+# conv_array([5, 3, 2, 3, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3])
+# conv_array([14, 12, 12, 12])
+# conv_array([14, 12, 12, 12])
+# conv_array([10, 6, 6, 6, 6, 6, 6, 4])
+# conv_array([5, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3])
+# conv_array([8, 7, 7, 6, 6, 6, 6, 4])
+# conv_array([5, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3])
+# conv_array([14, 13, 12, 11])
+
+
+
+conv_array([10, 6, 6, 6, 6, 6, 6, 4])
 conv_array([5, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3])
-conv_array([2, 2, 2, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 3])
 conv_array([8, 6, 6, 6, 6, 6, 6, 6])
-conv_array([4, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2])
-conv_array([6, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3])
-conv_array([2, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 3])
+conv_array([5, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3])
+conv_array([14, 13, 12, 11])

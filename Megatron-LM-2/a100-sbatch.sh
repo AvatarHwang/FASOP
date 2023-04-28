@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --nodes=1
+#SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=hgx
 #SBATCH --gres=gpu:hgx:4
@@ -12,12 +12,12 @@ GRES="gpu:hgx:4"
 NPROC_PER_NODE=4
 NNODES=4
 WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
-GLOBAL_BATCH_SIZE=64
+GLOBAL_BATCH_SIZE=32
 MICRO_BATCH_SIZE=1
 TENSOR_MP_SIZE=1
 DP_SIZE=2
 PIPELINE_MP_SIZE=8
-PARTITION="6-6-6-6-6-6-6-6"
+PARTITION="0-4-4-4-4-4-4-4-0"
 #************************************************************
 
 cd $HOME/tdpp/Megatron-LM-2

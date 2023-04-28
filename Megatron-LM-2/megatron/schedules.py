@@ -116,6 +116,10 @@ def forward_step(forward_step_func,
 
     unwrapped_model.set_input_tensor(input_tensor)
     output_tensor, loss_func = forward_step_func(data_iterator, model)
+
+    if timers is not None:
+        timers('loss-compute', log_level=2).start()
+
     if mpu.is_pipeline_last_stage():
         if not collect_non_loss_data:
             output_tensor = loss_func(output_tensor)
@@ -125,6 +129,8 @@ def forward_step(forward_step_func,
         else:
             data = loss_func(output_tensor, non_loss_data=True)
             forward_data_store.append(data)
+    if timers is not None:
+        timers('loss-compute').stop()
 
     if timers is not None:
         timers('forward-compute').stop()

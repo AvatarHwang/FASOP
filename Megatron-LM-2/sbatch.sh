@@ -1,27 +1,28 @@
 #!/bin/bash
-#SBATCH --nodes=8
+#SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu2
 #SBATCH --gres=gpu:a10:4
 #SBATCH --cpus-per-task=12
-#SBATCH -o ./log2/%j.sbatch.%N.out         
-#SBATCH -e ./log2/%j.sbatch.%N.err         
+#SBATCH -o ../log2/%j.sbatch.%N.out         
+#SBATCH -e ../log2/%j.sbatch.%N.err         
 
 #************************************************************
 GRES="gpu:a10:4"
+INDEXMAP_DIR=small # 'small' or 'xl'
 NPROC_PER_NODE=4
-NNODES=$SLURM_NNODES
+NNODES=4
 WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
-GLOBAL_BATCH_SIZE=64
+GLOBAL_BATCH_SIZE=32
 MICRO_BATCH_SIZE=1
 TENSOR_MP_SIZE=1
-DP_SIZE=4
-PIPELINE_MP_SIZE=2
-PARTITION="25-23"
+DP_SIZE=2
+PIPELINE_MP_SIZE=8
+PARTITION="0-4-4-4-4-4-4-4-0"
 #************************************************************
 
 cd $HOME/tdpp/Megatron-LM-2
-mkdir -p ./log2/$SLURM_JOB_ID
+mkdir -p ../log2/$SLURM_JOB_ID
 NODE_LIST=`scontrol show hostnames $SLURM_JOB_NODELIST`
 MASTER_HOST=`echo $NODE_LIST | awk '{print $1}'`
 MASTER_ADDR=`cat /etc/hosts | grep $MASTER_HOST | awk '{print $1}'`
@@ -50,13 +51,16 @@ for (( index = 0; index < length ; index++ )); do
     fi
 done 
 
-/usr/local/bin/gpustat -i > \$HOME/tdpp/Megatron-LM-2/log2/\$SLURM_JOB_ID/\$hostnode.gpu &
+/usr/local/bin/gpustat -i > \$HOME/tdpp/log2/\$SLURM_JOB_ID/\$hostnode.gpu &
+
 
 enroot start --root \
             --rw \
-            -m \$HOME/tdpp/Megatron-LM-2:/root/Megatron-LM \
+            -m \$HOME/tdpp/Megatron-LM-2:/root/Megatron-LM-2 \
+            -m \$HOME/tdpp/log2:/root/log2 \
+            -m \$HOME/tdpp/$INDEXMAP_DIR:/root/indexmap \
             megatron-latest \
-            bash -c "cd /root/Megatron-LM/ && sh run_inter.sh \$local_rank
+            bash -c "cp -r /root/Megatron-LM-2 /root/Megatron-LM && cd /root/Megatron-LM/ && sh run_inter.sh \$local_rank
 EOF
 )
 
@@ -64,6 +68,6 @@ EOF
 srun --partition=$SLURM_JOB_PARTITION \
       --gres=$GRES \
       --cpus-per-task=12 \
-      -o ./log2/%j/%N.out \
-      -e ./log2/%j/%N.err \
+      -o ../log2/%j/%N.out \
+      -e ../log2/%j/%N.err \
       bash -c "$ENROOT_SCRIPT $MASTER_ADDR $NPROC_PER_NODE $NNODES $GLOBAL_BATCH_SIZE $MICRO_BATCH_SIZE $TENSOR_MP_SIZE $DP_SIZE $PIPELINE_MP_SIZE $PARTITION \" " 

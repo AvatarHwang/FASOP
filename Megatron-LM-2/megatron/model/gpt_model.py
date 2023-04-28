@@ -7,7 +7,7 @@ import torch
 from megatron import get_args
 from megatron.core import tensor_parallel
 from .module import MegatronModule
-
+from megatron import get_timers
 from .enums import AttnMaskType
 from .language_model import parallel_lm_logits
 from .language_model import get_language_model
@@ -76,21 +76,27 @@ class GPTModel(MegatronModule):
 
     def forward(self, input_ids, position_ids, attention_mask, labels=None,
                 tokentype_ids=None, inference_params=None):
-
+        timers = get_timers()
         lm_output = self.language_model(
             input_ids,
             position_ids,
             attention_mask,
             inference_params=inference_params)
 
+        if timers is not None:
+            timers('post-process', log_level=2).start()
+
         if self.post_process:
-            return post_language_model_processing(
+            lm_output = post_language_model_processing(
                 lm_output, labels,
                 self.word_embeddings_weight(),
                 self.parallel_output,
                 self.fp16_lm_cross_entropy)
-        else:
-            return lm_output
+            
+        if timers is not None:
+            timers('post-process').stop()
+            
+        return lm_output
 
     def state_dict_for_save_checkpoint(self, prefix='', keep_vars=False):
 
