@@ -142,7 +142,7 @@ $ docker run --gpus all \
 
 If you use Slurm and Enroot, you can easily run jobs on multiple nodes. To start the training process, follow these steps:
 
-1. Navigate to the Megatron-LM-2 directory:
+- Navigate to the Megatron-LM-2 directory:
 
 ```
 $ cd ~
@@ -150,7 +150,7 @@ $ cd ~
 $ cd FASOP/Megatron-LM-2
 ```
 
-2. Edit the `hetero-conf.sh`file to adjust the desired training configurations.
+- Edit the `hetero-conf.sh`file to adjust the desired training configurations.
 
 ```
 
@@ -158,7 +158,7 @@ $ vim ./hetero-conf.sh
 
 ```
 
-3. Run the `submit-hetero.sh` script to start the master and slave jobs:
+- Run the `submit-hetero.sh` script to start the master and slave jobs:
 
 ```
 
