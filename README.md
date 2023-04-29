@@ -6,8 +6,10 @@ This repository contains FASOP, a framework that automates the process of findin
 
 # Usage
 
+This repository includes the FASOP framework, which can be used for the following two purposes:
+
 (1) Finding Optimal Parallel Strategy for GPT on Heterogeneous GPU Clusters.
-(2) As results of FASOP, you can launch practical distributed learning using Megatron-LM.
+(2) Launching practical distributed learning using Megatron-LM based on the results from FASOP.
 
 ## Reproducing the Experiments from [FASOP: Fast yet Accurate Automatic Search for Optimal Parallelization of a Transformer on Heterogeneous GPU Clusters]
 
@@ -30,7 +32,9 @@ To reproduce the experiments from [FASOP: Fast yet Accurate Automatic Search for
     ```
 
 ### II. Reproducing Experiment 4.1: Finding Optimal Parallel Strategy for GPT on Heterogeneous GPU Clusters
+
 To reproduce Experiment 4.1, which involves finding the optimal parallel strategy for the GPT 3.5m model and 1.5b on heterogeneous GPU clusters, follow the steps below. The python codes should be located in the 'FASOP' directory of the FASOP repository. 
+
 - To reproduce GPT-2 345m experiment, run `FASOP_345m.py`.
 
     ```bash
@@ -57,6 +61,7 @@ To reproduce Experiment 4.2, which involves finding the optimal parallel strateg
     ```
     
 ### III. Report    
+
 Find the results of the experiment.    
 FASOP will output a summary of the optimal parallel strategy for your model on your heterogeneous GPU cluster, including any estimated training time, cost, and other relevant metrics, in a text file. 
 
