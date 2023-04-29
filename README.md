@@ -1,26 +1,8 @@
-# FASOP: Fast yet Accurate Automatic Search for Optimal Parallelization of a Transformer on Heterogeneous GPU Clusters(ICPP 2023)
+# FASOP: Fast yet Accurate Automatic Search for Optimal Parallelization of a Transformer on Heterogeneous GPU Clusters
 
 This repository contains FASOP, a framework that automates the process of finding the optimal degrees of parallelism and model partitioning for Transformer-based models on heterogeneous GPU clusters. FASOP accurately estimates pipelining latency and GPU communications, enabling it to find configurations that minimize the cost of GPU clusters while satisfying training time constraints, or configurations that minimize training time while meeting cost constraints. FASOP supports a variety of Transformer-based models and uses advanced algorithms and techniques to rapidly and accurately estimate device configurations.
 
 -----
-
-# Performance
-
-## search time for the optimal partitioning
-
-FASOP offers fast and efficient model partitioning for Transformer-based models on heterogeneous GPU clusters. With advanced algorithms and techniques, FASOP can rapidly estimate and find optimal model partitioning configurations that minimize training time while meeting cost constraints. Additionally, FASOP can find similar configurations that closely match the optimal configuration.
-**Please note that lower values indicate better performance.**
-
-<p align="center">
-<img src="figs/performance_chart.png" width="500"/>
-</p>
-
-## Real-World Applications
-Using advanced algorithms and techniques, FASOP can rapidly find optimal device configurations in virtual AWS environments. The Pareto chart below shows the optimal trade-off between estimated training cost and throughput for different GPU clusters, including clusters with A10 GPU nodes, heterogeneous GPU clusters, and clusters with A100 GPU nodes.
-
-<p align="center">
-<img src="figs/pareto-final.png" width="500"/>
-</p>
 
 # Usage
 
