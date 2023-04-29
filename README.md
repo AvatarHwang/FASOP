@@ -19,6 +19,7 @@ To reproduce the experiments from [FASOP: Fast yet Accurate Automatic Search for
 - We recommend to create conda environment for test of reproducibility.
 - Python 3.8+, PyTorch 1.7+, numpy, CUDA 11.0+ (if you have a gpu)
 
+#링크 마지막에 확인
     ```bash
     cd ~/workspace
     git clone https://github.com/{git_id}/FASOP
@@ -34,14 +35,12 @@ To reproduce Experiment 4.1, which involves finding the optimal parallel strateg
 
     ```bash
     python FASOP_345m.py
-    >> Finished 0.4086604118347168
     ```
 
 - To reproduce GPT-2 1.5b experiment, run `FASOP_1.5b.py`.
 
     ```bash
     python FASOP_1.5b.py
-    >> Finished 4.481372833251953
     ```
 
 To reproduce Experiment 4.2, which involves finding the optimal parallel strategy for the GPT 1.5b model on virtual AWS cluster.
@@ -49,15 +48,14 @@ To reproduce Experiment 4.2, which involves finding the optimal parallel strateg
 
     ```bash
     python FASOP_pareto.py
-    >> Number of clusters combinations: 2144
-    >> Finished 4.481372833251953
     ```
     
 ### III. Report    
 Find the results of the experiment.    
 FASOP will output a summary of the optimal parallel strategy for your model on your heterogeneous GPU cluster, including any estimated training time, cost, and other relevant metrics, in a text file. 
 
-- output directory location: `~/workspace/FASOP/FASOP/main_logs`    
+#링크 마지막에 확인
+- output directory location: `~/workspace/FASOP/FASOP/main_logs`
 
     ```bash
     main_logs
@@ -99,6 +97,7 @@ You can run Megatron without relying on Slurm and Enroot. If Docker is installed
 ```
 $ cd ~
 
+#링크 마지막에 확인
 $ git clone https://github.com/{git_id}/FASOP
 
 $ docker run --gpus all \
@@ -126,6 +125,7 @@ $ docker run --gpus all \
 
 If you use Slurm and Enroot, you can easily run jobs on multiple nodes. To start the training process, you first need to adjust the desired training conditions in the `hetero-conf.sh` file. Afterwards, you can run the master and slave jobs by executing the `./submit-hetero.sh `script.
 
+#링크 마지막에 확인
 ```
 $ cd ~
 
@@ -156,4 +156,3 @@ $ ./submit-hetero.sh
   howpublished = {\url{https://github.com/attardi/wikiextractor}}
 }
 
-<!-- anonymous라서 contact는 지움-->
