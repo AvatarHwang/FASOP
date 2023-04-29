@@ -21,12 +21,12 @@ To reproduce the experiments from [FASOP: Fast yet Accurate Automatic Search for
 
 #링크 마지막에 확인
     ```bash
-    cd ~
-    git clone https://github.com/{git_id}/FASOP
-    conda create -name fasop python=3.8
-    conda activate fasop
-    conda install numpy
-    pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 -f https://download.pytorch.org/whl/torch_stable.html
+    $ cd ~
+    $ git clone https://github.com/{git_id}/FASOP
+    $ conda create -name fasop python=3.8
+    $ conda activate fasop
+    $ conda install numpy
+    $ pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 -f https://download.pytorch.org/whl/torch_stable.html
     ```
 
 ### II. Reproducing Experiment 4.1: Finding Optimal Parallel Strategy for GPT on Heterogeneous GPU Clusters
@@ -34,20 +34,26 @@ To reproduce Experiment 4.1, which involves finding the optimal parallel strateg
 - To reproduce GPT-2 345m experiment, run `FASOP_345m.py`.
 
     ```bash
-    python FASOP_345m.py
+    
+    $ python FASOP_345m.py
+    
     ```
 
 - To reproduce GPT-2 1.5b experiment, run `FASOP_1.5b.py`.
 
     ```bash
-    python FASOP_1.5b.py
+    
+    $ python FASOP_1.5b.py
+    
     ```
 
 To reproduce Experiment 4.2, which involves finding the optimal parallel strategy for the GPT 1.5b model on virtual AWS cluster.
  - To reproduce Experiment 4.2, run `FASOP_pareto.py`.
 
     ```bash
-    python FASOP_pareto.py
+    
+    $ python FASOP_pareto.py
+    
     ```
     
 ### III. Report    
@@ -58,10 +64,12 @@ FASOP will output a summary of the optimal parallel strategy for your model on y
 - output directory location: `~/FASOP/main_logs`
 
     ```bash
+    
     main_logs
     |- gpt345m.txt
     |- gpt1.5b.txt
     |- pareto.txt
+    
     ```    
     
 - The results file will contain the following fields, separated by ('\*'):
@@ -97,8 +105,11 @@ To prepare the Wikipedia training dataset, follow these steps:
 - Extract the text using WikiExtractor tool from https://github.com/attardi/wikiextractor.
 
 ### III. Running the modified Megatron-LM Code
+
 There are two ways to run the modified Megatron-LM code: with or without Slurm and Enroot.
+
 #### 1. Running Without Slurm and Enroot
+
 To run Megatron without relying on Slurm and Enroot, you can use the provided Docker script. Follow these steps:
 
 ```
@@ -138,13 +149,21 @@ $ cd ~
 
 $ cd FASOP/Megatron-LM-2
 ```
+
 2. Edit the `hetero-conf.sh`file to adjust the desired training configurations.
+
 ```
+
 $ vim ./hetero-conf.sh
+
 ```
+
 3. Run the `submit-hetero.sh` script to start the master and slave jobs:
+
 ```
+
 $ ./submit-hetero.sh
+
 ```
 
 
