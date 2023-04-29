@@ -21,7 +21,7 @@ To reproduce the experiments from [FASOP: Fast yet Accurate Automatic Search for
 
 #링크 마지막에 확인
     ```bash
-    cd ~/workspace
+    cd ~
     git clone https://github.com/{git_id}/FASOP
     conda create -name fasop python=3.8
     conda activate fasop
@@ -55,7 +55,7 @@ Find the results of the experiment.
 FASOP will output a summary of the optimal parallel strategy for your model on your heterogeneous GPU cluster, including any estimated training time, cost, and other relevant metrics, in a text file. 
 
 #링크 마지막에 확인
-- output directory location: `~/workspace/FASOP/FASOP/main_logs`
+- output directory location: `~/FASOP/main_logs`
 
     ```bash
     main_logs
@@ -67,7 +67,7 @@ FASOP will output a summary of the optimal parallel strategy for your model on y
 - The results file will contain the following fields, separated by ('\*'):
 `rank`, `mbs`, `tp degree`, `dp degree`, `pp degree`, `node_info`, `partition`, `estimated_time`, `pipeline time`, `time of DP`, `time of reducing embedding layers`, `$/step`.
 
-- example for the result of `FASOP_1.5b.py` located as `~/workspace/FASOP/FASOP/main_logs/gpt1.5b.txt`
+- example for the result of `FASOP_1.5b.py` located as `~/FASOP/main_logs/gpt1.5b.txt`
     ```bash
     rank 0: (1, '*', {'tp_deg': 1, 'dp_deg': 4, 'pp_deg': 16}, '*', ['p4d.24xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge'], '*', [6, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3], '*', 0.982886552810669, '*', 0.8530580251371566, '*', 0.0011705760844051838, '*', tensor([0.1287]), '*', 0.0321765932649374)
     rank 1: (1, '*', {'tp_deg': 2, 'dp_deg': 2, 'pp_deg': 16}, '*', ['p4d.24xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge'], '*', [5, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3], '*', 1.059550404548645, '*', 1.026912873923363, '*', 0.00047297601122409105, '*', tensor([0.0322]), '*', 0.0346863250019749)
@@ -79,26 +79,32 @@ FASOP will output a summary of the optimal parallel strategy for your model on y
 
 ## Run modified Megatron-LM
 
+The following steps provide instructions on how to set up and run the modified Megatron-LM code used in our experiments.
+
 ### I. Environment
 
-We ran our experiment in an environment where slurm and enroot were installed. However, if you prefer, it is also possible to perform the same test smoothly without slurm by using Docker.
+Our experiements were run using the following environment:
 
 - slurm version: 20.11.4
 - enroot version: 3.4.0
 - container image: `nvcr.io/nvidia/pytorch:23.04-py3`
 
-### II. Prepare Wikipedia Training Dataset
-Download Wikipedia data: https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2
-then extract the text with https://github.com/attardi/wikiextractor
+However, it is also possible to run the experiments without Slurm and Enroot using Docker.
 
-### III. run
-#### 1. run without slurm.
-You can run Megatron without relying on Slurm and Enroot. If Docker is installed on every node, you can carry out multi-GPU training across different architectures using the provided script. Just keep in mind that the node with the high-performance GPU should be designated as the master node.
+### II. Prepare Wikipedia Training Dataset
+To prepare the Wikipedia training dataset, follow these steps:
+- Download Wikipedia data from https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2.
+- Extract the text using WikiExtractor tool from https://github.com/attardi/wikiextractor.
+
+### III. Running the modified Megatron-LM Code
+There are two ways to run the modified Megatron-LM code: with or without Slurm and Enroot.
+#### 1. Running Without Slurm and Enroot
+To run Megatron without relying on Slurm and Enroot, you can use the provided Docker script. Follow these steps:
+
 ```
 $ cd ~
 
-#링크 마지막에 확인
-$ git clone https://github.com/{git_id}/FASOP
+$ cd FASOP/Megatron-LM-2/
 
 $ docker run --gpus all \
     -it \
@@ -121,20 +127,23 @@ $ docker run --gpus all \
 
 ```
 
-#### 2. run with slurm and enroot.
+#### 2. Running With Slurm and Enroot
 
-If you use Slurm and Enroot, you can easily run jobs on multiple nodes. To start the training process, you first need to adjust the desired training conditions in the `hetero-conf.sh` file. Afterwards, you can run the master and slave jobs by executing the `./submit-hetero.sh `script.
+If you use Slurm and Enroot, you can easily run jobs on multiple nodes. To start the training process, follow these steps:
 
-#링크 마지막에 확인
+1. Navigate to the Megatron-LM-2 directory:
+
 ```
 $ cd ~
 
-$ git clone https://github.com/{git_id}/FASOP
-
-$ cd ./FASOP/Megatron-LM-2
-
+$ cd FASOP/Megatron-LM-2
+```
+2. Edit the `hetero-conf.sh`file to adjust the desired training configurations.
+```
 $ vim ./hetero-conf.sh
-
+```
+3. Run the `submit-hetero.sh` script to start the master and slave jobs:
+```
 $ ./submit-hetero.sh
 ```
 
