@@ -17,18 +17,43 @@ To reproduce the experiments from [FASOP: Fast yet Accurate Automatic Search for
 
 ### I. Install the necessary dependencies for FASOP. 
 
-- FASOP requires a CPU for estimation tasks.
-- We recommend to create conda environment for test of reproducibility.
-- Python 3.8+, PyTorch 1.7+, numpy, CUDA 11.0+ (if you have a gpu)
+FASOP requires a CPU for estimation tasks. We recommend creating a conda environment for the test of reproducibility. Ensure that you have installed the following dependencies:
+- Python 3.9
+- PyTorch 2.0
+- NumPy 
 
+To prepare the necessary dependencies for FASOP, follow these steps:
 #링크 마지막에 확인
-    ```bash
+
+- Clone the FASOP repository to your local machine:
+ 
+    ```
     $ cd ~
     $ git clone https://github.com/{git_id}/FASOP
-    $ conda create -name fasop python=3.8
+    ```
+    
+- Create a conda environment named `fasop` with Python 3.9:
+
+    ```
+    $ conda create -n fasop python=3.9
+    ```
+    
+- Activate the `fasop` environment:
+
+    ```
     $ conda activate fasop
+    ```
+    
+- Install the `numpy` package:
+
+    ```
     $ conda install numpy
-    $ pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 -f https://download.pytorch.org/whl/torch_stable.html
+    ```
+    
+- Install PyTorch 2.0
+
+    ```    
+    $ conda install pytorch torchvision torchaudio cpuonly -c pytorch
     ```
 
 ### II. Reproducing Experiment 4.1: Finding Optimal Parallel Strategy for GPT on Heterogeneous GPU Clusters
