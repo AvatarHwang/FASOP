@@ -156,34 +156,6 @@ $ vim ./hetero-conf.sh
 $ ./submit-hetero.sh
 ```
 
-### IV. Profile with Torch Profiler
-
-아래 경로에서 training.py가 오리지널 파일인지, torch profiler가 작동하는 파일인지 확인합니다.
-
-Megatron-LM-2/megatron/
-
-메가트론을 실행합니다.
-프로그램이 종료되면 Megatron-LM-2/log/ 경로에 생성된 로그파일들을 텐서보드를 사용해 확인합니다.
-생성된 파일들 중에 마스터 노드에서 실행된 파일 딱 하나만 다른 경로(예:temp)로 옮겨 확인해야 distributed 탭을 확인 가능합니다.
-```bash
-tensorboard --logdir=./log/temp --bind_all
-```
-
-이미 생성된 log파일들은 아래 경로에 rank 별로 존재합니다.
-
-`/home/soonyear/profile/12_A10-4_RTX3090/`
-
-먼저 computation 시간과 communication 시간을 확인합니다. 확인은 Normal - view - Distributed 에서 확인 가능합니다.
-두번째로는 TP comm.시간과 DP comm.시간을 확인합니다. 확인은 trace에서 가능합니다.
-자세한 방법은 문의하세요.
-
-
-### V. Profile layer by layer execution time
-
-레이어별 연산시간 프로파일링은 AMP의 재료로 사용하기 위해 필요합니다.
-1. 먼저 `Megatron-LM-2/megatron/` 경로로 이동합니다.
-2. 기존 training.py를 삭제하고 training-profile_LBL.py를 training.py로 변경합니다.
-3. 메가트론을 실행합니다. 실행 파일은 `LayerByLayer_profile.sh` 입니다. 연산시간은 마스터노드에서 리스트 형태로 출력됩니다.
 
 ## References
 <a id="1">[1]</a> 
