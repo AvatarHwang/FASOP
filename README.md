@@ -136,7 +136,7 @@ To prepare the Wikipedia training dataset, follow these steps:
 
 ### III. Setup Model Configuration
 
-In the run-inter.sh file, you can adjust the gpt2 model by modifying the MODEL_ARGS value. It's important to note that the gpt2-xl and gpt2-small models have different num-layers and hidden-size, so you need to carefully set these parameters accordingly.
+In the `run-inter.sh` file, you can adjust the gpt2 model by modifying the `MODEL_ARGS` value. It's important to note that the `gpt2-xl` and `gpt2-small` models have different `--num-layers` and `--hidden-size`, so you need to carefully set these parameters accordingly.
 
 #### 1. gpt2-xl(1.5B)
 
