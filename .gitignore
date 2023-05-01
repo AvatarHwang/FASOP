@@ -10,6 +10,8 @@ my-gpt2_text_document_train_*
 image/megatron-latest.sqsh
 __pycache__
 
+conv-yaml.py
+
 distribute-test*
 log-nsys
 image/nvcr.io+nvidia+pytorch+23.03-py3.sqsh
