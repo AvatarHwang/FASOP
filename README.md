@@ -134,7 +134,38 @@ To prepare the Wikipedia training dataset, follow these steps:
 - Download Wikipedia data from https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2.
 - Extract the text using WikiExtractor tool from https://github.com/attardi/wikiextractor.
 
-### III. Running the modified Megatron-LM Code
+### III. Setup Model Configuration
+
+In the run-inter.sh file, you can adjust the gpt2 model by modifying the MODEL_ARGS value. It's important to note that the gpt2-xl and gpt2-small models have different num-layers and hidden-size, so you need to carefully set these parameters accordingly.
+
+#### 1. gpt2-xl(1.5B)
+
+```bash
+#~/FASOP/Megatron-LM-2/run-inter.sh
+.
+.
+MODEL_ARGS="--num-layers 48 \
+        --hidden-size 1600 \
+        --num-attention-heads 16 \
+        --seq-length 1024 \
+.
+.
+```
+#### 2. gpt2-small(345M)
+
+```bash
+#~/FASOP/Megatron-LM-2/run-inter.sh
+.
+.
+MODEL_ARGS="--num-layers 24 \
+        --hidden-size 1024 \
+        --num-attention-heads 16 \
+        --seq-length 1024 \
+.
+.
+```
+
+### IV. Running the modified Megatron-LM Code
 
 There are two ways to run the modified Megatron-LM code: with or without Slurm and Enroot.
 
