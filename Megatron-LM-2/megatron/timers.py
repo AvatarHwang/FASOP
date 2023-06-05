@@ -70,6 +70,9 @@ class Timer(TimerBase):
         # Note that None will default to the global process group
         self._barrier_group = None
         self._start_time = time.time()
+        self._end_time = time.time()
+        self.start_time_lst = []
+        self.end_time_lst = []
 
 
     def set_barrier_group(self, barrier_group):
@@ -84,6 +87,7 @@ class Timer(TimerBase):
         torch.cuda.synchronize()
         self._start_time = time.time()
         self._started = True
+        self.start_time_lst.append(self._start_time)
 
 
     def stop(self, barrier=False):
@@ -92,8 +96,10 @@ class Timer(TimerBase):
         if barrier:
             torch.distributed.barrier(group=self._barrier_group)
         torch.cuda.synchronize()
-        self._elapsed += (time.time() - self._start_time)
+        self._end_time = time.time()
+        self._elapsed += (self._end_time - self._start_time)
         self._started = False
+        self.end_time_lst.append(self._end_time)
 
 
     def reset(self):
@@ -101,6 +107,9 @@ class Timer(TimerBase):
         self._elapsed = 0.0
         self._started = False
 
+    def reset_time_lst(self):
+        self.start_time_lst = []
+        self.end_time_lst = []
 
     def elapsed(self, reset=True, barrier=False):
         """Calculate the elapsed time."""
@@ -184,8 +193,17 @@ class Timers:
         # pytorch yet. It is simpler to deal with a single tensor
         # and since we are only gathering a small amount of data,
         # it should be ok to use all-gather instead of gather.
-        rank_name_to_time = torch.zeros((world_size, len(names)),
-                                        dtype=torch.float,
+
+        max_len = 1
+        for i, name in enumerate(names):
+            if name in self._timers:
+                name_len = len(self._timers[name].start_time_lst)
+                max_len = name_len if max_len < name_len else max_len
+                
+                    
+        # make tensor bigger for time stamping
+        rank_name_to_time = torch.zeros((world_size, len(names), 3, max_len),
+                                        dtype=torch.float64,
                                         device=torch.cuda.current_device())
         for i, name in enumerate(names):
             if name in self._timers:
@@ -193,8 +211,19 @@ class Timers:
                 # the processes are already in sync. This avoids the
                 # issue of different timers having different barrier
                 # groups inside their class.
-                rank_name_to_time[rank, i] = self._timers[name].elapsed(
+                rank_name_to_time[rank, i, 0, 0] = self._timers[name].elapsed(
                     reset=reset)
+                
+                #*******************************
+                # fill out time stamps
+                for j in range(max_len):
+                    if j>=len(self._timers[name].start_time_lst):
+                        break
+                    
+                    rank_name_to_time[rank, i, 1, j] = self._timers[name].start_time_lst[j]
+                    rank_name_to_time[rank, i, 2, j] = self._timers[name].end_time_lst[j]
+                self._timers[name].reset_time_lst()
+                #*******************************
 
         # See the note above for why we are not using gather.
         torch.distributed._all_gather_base(rank_name_to_time.view(-1),
@@ -249,13 +278,30 @@ class Timers:
         for i, name in enumerate(names):
             not_yet_found = True
             for rank in range(torch.distributed.get_world_size()):
-                if rank_name_to_time[rank, i] > 0:
+                if rank_name_to_time[rank, i, 0, 0] > 0:
                     no_reported_timing = False
                     if not_yet_found:
                         not_yet_found = False
                         output_string += '\n  {}:'.format(name)
+                    
+                    # elapsed time
                     output_string += '\n     rank {:2d}: {:.2f}'.format(
-                        rank, rank_name_to_time[rank, i] / normalizer)
+                        rank, rank_name_to_time[rank, i, 0, 0] / normalizer)
+                    
+                    # start time
+                    output_string += f"\n {name} start time lst: "
+                    
+                    for j in range(rank_name_to_time.shape[3]):
+                        if rank_name_to_time[rank, i, 1, j]==0:
+                            break
+                        output_string += f" {rank_name_to_time[rank, i, 1, j]}"
+
+                    output_string += f"\n {name} end time lst: "
+                    for j in range(rank_name_to_time.shape[3]):
+                        if rank_name_to_time[rank, i, 1, j]==0:
+                            break
+                        output_string += f" {rank_name_to_time[rank, i, 2, j]}"
+
         if no_reported_timing:
             return None
         return output_string

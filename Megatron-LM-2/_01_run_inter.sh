@@ -1,43 +1,43 @@
 #!/bin/bash
 
+hostname
+
 NODE_RANK=$1
 MASTER_ADDR=$2
-NPROC_PER_NODE=$3
-NNODES=$4
-GLOBAL_BATCH_SIZE=$5
-MICRO_BATCH_SIZE=$6
-TENSOR_MP_SIZE=$7
-DP_SIZE=$8
-PIPELINE_MP_SIZE=$9
-PARTITION=${10}
 
-WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
+. _00_conf.sh
+
+# copy data indexmap from nfs mount dir to local dir
+cp -r /root/indexmap/* /root/Megatron-LM
+
 echo "NODE_RANK: $NODE_RANK"
 echo "MASTER_ADDR: $MASTER_ADDR"
 echo "NNODES: $NNODES"
-echo "GLOBAL_BATCH_SIZE*MICRO_BATCH_DIM: $GLOBAL_BATCH_SIZE"
+echo "WORLD_SIZE: $WORLD_SIZE"
+echo "GLOBAL_BATCH_SIZE: $GLOBAL_BATCH_SIZE"
 echo "MICRO_BATCH_SIZE: $MICRO_BATCH_SIZE"
 echo "TENSOR_MP_SIZE: $TENSOR_MP_SIZE"
 echo "DP_SIZE: $DP_SIZE"
 echo "PIPELINE_MP_SIZE: $PIPELINE_MP_SIZE"
 echo "PARTITION: $PARTITION"
+echo "MODEL: $MODEL"
+echo "HIDDEN_SIZE: $HIDDEN_SIZE"
+echo "NUM_LAYERS: $NUM_LAYERS"
+echo "PROFILE: $PROFILE"
+echo "PROFILE_ARGS: $PROFILE_ARGS"
 
 DISTRIBUTED_ARGS="--nproc_per_node $NPROC_PER_NODE \
                   --nnodes $NNODES \
                   --node_rank $NODE_RANK \
                   --master_addr $MASTER_ADDR \
-                  --master_port 6787"
+                  --master_port $MASTER_PORT"
 
+DATA_PATH=/root/Megatron-LM/my-gpt2_text_document
 VOCAB_FILE=gpt2-vocab.json
 MERGE_FILE=gpt2-merges.txt
 
-cp -r /root/indexmap/* /root/Megatron-LM
-
-ls /root/Megatron-LM/my-gpt2_text_document*
-
-DATA_PATH=/root/Megatron-LM/my-gpt2_text_document
-MODEL_ARGS="--num-layers 48 \
-        --hidden-size 1600 \
+MODEL_ARGS="--num-layers $NUM_LAYERS \
+        --hidden-size $HIDDEN_SIZE \
         --num-attention-heads 16 \
         --seq-length 1024 \
         --max-position-embeddings 1024 \
@@ -56,11 +56,11 @@ MODEL_ARGS="--num-layers 48 \
 OUTPUT_ARGS="--log-interval 10 \
               --save-interval 100 \
               --eval-interval 100 \
-              --eval-iters 10"
+              --eval-iters 10 $PROFILE_ARGS"
 
-hostname
 
-OMP_NUM_THREADS=4 python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_gpt.py \
+RUN_TORCH_SCRIPT=$(cat << EOF
+python -m torch.distributed.launch $DISTRIBUTED_ARGS _00_pretrain_gpt.py \
                 $MODEL_ARGS \
                 $OUTPUT_ARGS \
                 --data-path $DATA_PATH \
@@ -70,3 +70,33 @@ OMP_NUM_THREADS=4 python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_
                 --no-async-tensor-model-parallel-allreduce \
                 --no-gradient-accumulation-fusion \
                 --split 100,0,0 
+EOF
+)
+
+function run_torch() {
+        OMP_NUM_THREADS=4 $RUN_TORCH_SCRIPT
+}
+
+function run_torch_with_nsys() {
+        OMP_NUM_THREADS=4 nsys profile -t cuda,nvtx \
+                --delay=5 \
+                -o ../log-nsys/$SLURM_JOB_ID \
+                --export=sqlite \
+                -f true \
+                $RUN_TORCH_SCRIPT
+}
+
+function run_torch_with_ncu(){
+        OMP_NUM_THREADS=4 ncu --target-processes all --nvtx \
+        -o ../log-ncu/$REPORT \
+                
+}
+
+# if NSYS is true, then run nsys
+if $NSYS; then
+        echo "Run torch  with nsys"
+        run_torch_with_nsys
+else
+        echo "Run torch"
+        run_torch
+fi

@@ -1,10 +1,14 @@
 .nfs*
 .coveragerc
-
+log2
+log-ncu
+log-nsys
+log
 build
 build-bk
 log-backup
 Megatron-LM-3
+backup
 AMP
 my-gpt2_text_document_train_*
 image/megatron-latest.sqsh
