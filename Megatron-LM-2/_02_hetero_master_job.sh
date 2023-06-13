@@ -8,7 +8,7 @@
 #SBATCH -e ../log2/%j.sbatch.%N.err         
 
 #************************************************************
-GRES="gpu:a10:4"
+GRES="gpu:hgx:4"
 . _00_conf.sh
 #************************************************************
 
@@ -16,13 +16,8 @@ cd $HOME/tdpp/Megatron-LM-2
 
 mkdir -p ../log2/$SLURM_JOB_ID
 
-
-function get_master_adress(){
-    NODE_LIST=`scontrol show hostnames $SLURM_JOB_NODELIST`
-    MASTER_HOST=`echo $NODE_LIST | awk '{print $1}'`
-    MASTER_ADDR=`cat /etc/hosts | grep $MASTER_HOST | awk '{print $1}'`
-}
-get_master_adress
+# get_master_adress
+MASTER_ADDR='192.168.120.60'
 echo MASTER_ADDR:$MASTER_ADDR
 echo CONTAINER_PATH:$CONTAINER_PATH
 
