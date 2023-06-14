@@ -292,6 +292,9 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
                               process_group=mpu.get_data_parallel_group())
                      for model_module in model]
 
+        # TODO
+        # 여기서 EMBEDDING LAYER만 DDP없이 수행하고
+        # 수행된 결과를 다음 pp stage에 scatter 하도록 구현할 것.
         elif args.DDP_impl == 'local':
             model = [LocalDDP(model_module,
                               args.accumulate_allreduce_grads_in_fp32,
