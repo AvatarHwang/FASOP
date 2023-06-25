@@ -224,6 +224,7 @@ df_list = []
 ./_05_report_visualization.py
 ```
 
+<img alt='example' src='../figs/example.png'/>
 
 ### 8. 소스맵
 
