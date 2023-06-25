@@ -4,7 +4,7 @@ CONTAINER_IMAGE_PATH="$HOME/tdpp/image/nvcr.io+nvidia+pytorch+23.03-py3.sqsh"
 CONTAINER_PATH="/scratch/enroot/$UID/data/megatron-latest"
 CONTAINER_NAME="megatron-latest"
 
-HOMOGENEOUS_CLUSTER=false
+HOMOGENEOUS_CLUSTER=true
 MODEL='xl' # 'small' or 'xl'
 NPROC_PER_NODE=4
 NNODES=8
@@ -16,7 +16,7 @@ DP_SIZE=4
 PIPELINE_MP_SIZE=8
 PARTITION="0-11-8-8-8-8-5-0"
 NSYS=false
-PROFILE=true # 
+PROFILE=false # 
 MASTER_PORT=6787
 RELOAD_CONTAINER=false
 

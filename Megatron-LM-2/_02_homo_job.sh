@@ -3,6 +3,7 @@
 #SBATCH --ntasks-per-node=1              
 #SBATCH --partition=gpu2
 #SBATCH --gres=gpu:a10:4
+#SBATCH --nodelist=n060,n061,n062,n063,n064,n065,n066,n067
 #SBATCH --cpus-per-task=14
 #SBATCH -o ../log2/%j.sbatch.%N.out         
 #SBATCH -e ../log2/%j.sbatch.%N.err
@@ -53,6 +54,7 @@ ENROOT_SCRIPT="rm -rf /root/Megatron-LM && \
                 cp -r /root/Megatron-LM-2 /root/Megatron-LM  && \
                 cd /root/Megatron-LM/ && \
                 bash _01_run_inter.sh"
+
 
 SRUN_SCRIPT=$(cat <<EOF
 

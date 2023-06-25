@@ -4,6 +4,7 @@ log2
 log-ncu
 log-nsys
 log
+out.html
 build
 build-bk
 log-backup

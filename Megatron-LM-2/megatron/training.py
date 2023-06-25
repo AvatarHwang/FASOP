@@ -6,6 +6,7 @@ from datetime import datetime
 import math
 import sys
 import time
+import os
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
 global_time =  time.time()
@@ -296,10 +297,14 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
         # 여기서 EMBEDDING LAYER만 DDP없이 수행하고
         # 수행된 결과를 다음 pp stage에 scatter 하도록 구현할 것.
         elif args.DDP_impl == 'local':
-            model = [LocalDDP(model_module,
+            print("RANK: ",torch.distributed.get_rank())
+            print("GPU LOCAL_RANK", os.environ['LOCAL_RANK'])
+            new_model = []
+            for model_module in model:
+                ddp_model = LocalDDP(model_module,
                               args.accumulate_allreduce_grads_in_fp32,
                               args.use_contiguous_buffers_in_local_ddp)
-                     for model_module in model]
+                new_model.append(ddp_model)
             # broad cast params from data parallel src rank to other data parallel ranks
             if args.data_parallel_random_init:
                 for model_module in model:

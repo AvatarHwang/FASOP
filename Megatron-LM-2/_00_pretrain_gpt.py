@@ -3,6 +3,7 @@
 """Pretrain GPT"""
 
 import torch
+import os
 from functools import partial
 from megatron import get_args
 from megatron import print_rank_0
@@ -110,6 +111,9 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
 
 if __name__ == "__main__":
+
+    # print("RANK: ",torch.distributed.get_rank())
+    print("LOCAL_RANK", os.environ['LOCAL_RANK'])
 
     #"""
     pretrain(train_valid_test_datasets_provider, model_provider,

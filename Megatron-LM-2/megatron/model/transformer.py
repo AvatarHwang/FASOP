@@ -865,7 +865,6 @@ def _get_num_layers(args, is_encoder_and_decoder_model, is_decoder=False):
             if args.balance :
                 balance=args.balance.split("-")
                 num_layers = int(balance[mpu.get_pipeline_model_parallel_rank()])
-                print("num_layers", num_layers)
             else:
                 num_layers = (
                     0
