@@ -206,6 +206,11 @@ debug?  : 0
 마지막으로 job 실험결과를 시각화 할 수 있습니다.
 `_05_report_visualization.py`를 사용하며 이 파이썬 스크립트의 최상단에 몇 가지 값을 수정하여 원하는 job의 실험결과를 수정합니다.
 
+#### requirement
+```
+pip install pandas plotly matplotlib numpy tqdm 
+```
+
 ```python
 #%%
 jobid='10931852' # slurm job id
