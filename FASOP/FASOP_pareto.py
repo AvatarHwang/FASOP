@@ -34,7 +34,7 @@ parser.add_argument("--num_attention_heads", type=int, default=16)
 parser.add_argument("--precision", type=int, default=16)
 parser.add_argument("--iter", type=int, default=12_500_000)
 parser.add_argument("--budget", type=int, default=600_000_000_000)
-parser.add_argument("--num_node", type=int, default=64)
+parser.add_argument("--num_node", type=int, default=4)
 args = parser.parse_args()
 
 time_s = time.time()
@@ -52,14 +52,13 @@ a10 = [torch.tensor([100 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 cluster_combinations=[]
 node_nounter = 0
 for node_num in range(1, args.num_node+1):
-    for j in range(0, node_num+1):
+    for j in range(0, 4+1):
         if j==0:
             cluster = {i:a10 for i in range(node_num)}
-        if j==node_num:
-            cluster = {i:a100 for i in range(node_num)}
         else:
-            cluster = {i:a100 for i in range(j)}
-            cluster.update({i:a10 for i in range(j, node_num)})
+            cluster = {i:a10 for i in range(node_num)}
+            cluster.update({node_num-1:a100})
+            cluster.update({i:a100 for i in range(j-1)})
         cluster_combinations.append(cluster)
         node_nounter += 1
 
@@ -91,14 +90,14 @@ with open(record_file, "a") as fp:
 total_count = 0
 for cluster_info in cluster_combinations:
     num_node = len(cluster_info.keys())
-    gpu_of_cluster = []
+    node_type = []
     n_a100=0
     for i in range(num_node):
         if cluster_info[i][1] == torch.tensor([4800 * 1e9]).float():
-            gpu_of_cluster.append('p4d.24xlarge')
+            node_type.append('p4d.24xlarge')
             n_a100+=1
         else:
-            gpu_of_cluster.append('g5.24xlarge')
+            node_type.append('g5.24xlarge')
     n_a10 = num_node - n_a100
 
     if num_node == n_a100:
@@ -120,7 +119,7 @@ for cluster_info in cluster_combinations:
             model_args = (fake_config, gbs, mbs, cluster_info, model_config, parallel_dim)    
 
             with torch.no_grad():
-                rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost = model(model_args)
+                rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost = model(model_args, node_type)
             
             for k in parallel_dim:
                 parallel_dim[k] = int(parallel_dim[k].item())
@@ -143,3 +142,5 @@ with open(record_file, "a") as fp:
     for item in sorted_settings:
         fp.write(f"rank {sorted_settings.index(item)}: {item}")
         fp.write("\n")
+
+print("file saved at: ", record_file)

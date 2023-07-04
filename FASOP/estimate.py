@@ -44,60 +44,23 @@ class FASOP(nn.Module):
         config_h = int((self.model_config["hidden_size"]).item())
         config_n = int(n)
 
-        self.profile_cost1 = {}
-        self.profile_cost2 = {}
+        self.profile_cost_A100 = {}
+        self.profile_cost_A10 = {}
         for mp_size in [1,2,4]:
             # known_cost directory stores the real forward time with correponding model parallel degree.
-            if self.cluster_info0[1] == torch.tensor([4800 * 1e9]).float():
-                known_record = f"known_cost/{self.model_type}_A100_{mp_size}" 
-                cur_profile_cost1 = 3 * np.load(f"{known_record}.npy")
-            else:
-                known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
-                cur_profile_cost1 = 3 * np.load(f"{known_record}.npy")
-            # Append post_process layer cost
-            if self.model_type == "gpt2XL":
-                if mp_size==1:
-                    cur_profile_cost1 = np.append(cur_profile_cost1, 3 * 0.00603)
-                if mp_size==2:
-                    cur_profile_cost1 = np.append(cur_profile_cost1, 3 * 0.00325)
-                if mp_size==4:
-                    cur_profile_cost1 = np.append(cur_profile_cost1, 3 * 0.00177)
-            else:
-                if mp_size==1:
-                    cur_profile_cost1 = np.append(cur_profile_cost1, 3 * 0.00538)
-                if mp_size==2:
-                    cur_profile_cost1 = np.append(cur_profile_cost1, 3 * 0.0029)
-                if mp_size==4:
-                    cur_profile_cost1 = np.append(cur_profile_cost1, 3 * 0.00155)
-            if self.cluster_info1[1] == torch.tensor([4800 * 1e9]).float():
-                known_record = f"known_cost/{self.model_type}_A100_{mp_size}" 
-                cur_profile_cost2 = 3 * np.load(f"{known_record}.npy")
-            else:
-                known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
-                cur_profile_cost2 = 3 * np.load(f"{known_record}.npy")
-            if self.model_type == "gpt2XL":
-                if mp_size==1:
-                    cur_profile_cost2 = np.append(cur_profile_cost2, 3 * 0.00603)
-                if mp_size==2:
-                    cur_profile_cost2 = np.append(cur_profile_cost2, 3 * 0.00325)
-                if mp_size==4:
-                    cur_profile_cost2 = np.append(cur_profile_cost2, 3 * 0.00177)
-            else:
-                if mp_size==1:
-                    cur_profile_cost2 = np.append(cur_profile_cost2, 3 * 0.00538)
-                if mp_size==2:
-                    cur_profile_cost2 = np.append(cur_profile_cost2, 3 * 0.0029)
-                if mp_size==4:
-                    cur_profile_cost2 = np.append(cur_profile_cost2, 3 * 0.00155)
+            known_record = f"known_cost/{self.model_type}_A100_{mp_size}" 
+            profile_cost_a100 = 3 * np.load(f"{known_record}.npy")
+            self.profile_cost_A100[str(mp_size)] = profile_cost_a100
 
-            self.profile_cost1[str(mp_size)] = cur_profile_cost1
-            self.profile_cost2[str(mp_size)] = cur_profile_cost2
+            known_record = f"known_cost/{self.model_type}_A10_{mp_size}"
+            profile_cost_a10 = 3 * np.load(f"{known_record}.npy")
+            self.profile_cost_A10[str(mp_size)] = profile_cost_a10
         
-    def forward(self, args):
+    def forward(self, args, node_type):
         config, bs, micro_bs, cluster_info, model_config, oth = args
-        amp_config = {"profile_cost1" : self.profile_cost1,
-                      "profile_cost2" : self.profile_cost2}
-        rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost = predict(config, bs, micro_bs, cluster_info, model_config, amp_config, oth)
+        amp_config = {"profile_cost_a100" : self.profile_cost_A100,
+                      "profile_cost_a10" : self.profile_cost_A10}
+        rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost = predict(config, bs, micro_bs, cluster_info, model_config, amp_config, oth, node_type)
         return rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost
         
 # pipeline communication cost, return shape: (L-1, pp-1)
@@ -173,10 +136,7 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost):
     _layer = ["embedding_layer"]
     for i in range(int(n.item())):
         _layer.append("transformer_layer")
-    if pp>1:
-        _layer.extend(["embedding_layer"])
-    else:
-        _layer.extend(["None"])
+    _layer.extend(["post_process"])
 
     _num_layer = len(_layer)
             
@@ -188,8 +148,11 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost):
         # cost_e in the main result is equivalent to using profile_cost.
         for layer_id in range(_num_layer):
             layer_type = _layer[layer_id]
-            if layer_type == "embedding_layer":
-                cur_layer = profile_cost[str(int(mp.item()))][layer_id]
+            if layer_type == "embedding_layer" or layer_type == "post_process":
+                if cluster_info[0][1] == torch.tensor([252 * 1e9]):
+                    cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
+                else:
+                    cur_layer = profile_cost[str(int(mp.item()))][layer_id]
             elif layer_type == "transformer_layer":
                 cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
             else:
@@ -252,7 +215,7 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     if pp>1:
         _layer.extend(["embedding_layer"])    
     else:
-        _layer.extend(["None"])
+        _layer.extend(["post_process"])
     _num_layer = len(_layer)
         
     # First translate to deepspeed partition form
@@ -293,8 +256,12 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         bandwidth = min(bandwidth_lst)
 
         gpu_per_node = 4 #TODO: shoud be args
-        if int(mp.item())+int(dp.item()) > gpu_per_node and int(dp.item())>1:
+        # Inter-node bandwidth share
+        if int(mp.item())*int(dp.item()) > gpu_per_node and int(dp.item())>1:
             bandwidth = bandwidth / int(mp.item())
+        # Intra-node bandwidth share
+        elif int(mp.item())*int(dp.item()) <= gpu_per_node and int(dp.item())>1:
+            bandwidth = bandwidth / (gpu_per_node/int(dp.item()))
 
         # All-reduce cost: 2(n-1)M / nB
         precision = 16 #TODO: precision should be args.precision
@@ -303,7 +270,9 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     return ds_partition, dp_cost_list
 
 
-def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
+def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_type):
+    L = model_config["num_layers"]
+    cost = torch.zeros(1,)
     M, N = config.shape
     config = np.asarray(config)
        
@@ -354,14 +323,14 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth):
             
     parallel_config = {"mp" : tp_degree, "dp" : dp_degree, "pp" : pp_degree, "micro_bs" : mbs, "rank_map" : rank_map, "rank_node_map": rank_node_map}
         
-    cost_e1 = get_cost_e(cluster_info=cluster_info, 
-                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost1"])
-    cost_e2 = get_cost_e(cluster_info=cluster_info, 
-                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost2"])
-    cost_c, _ = get_cost_c(cluster_info=cluster_info, 
+    cost_e_a100 = get_cost_e(cluster_info=cluster_info, 
+                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a100"])
+    cost_e_a10 = get_cost_e(cluster_info=cluster_info, 
+                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a10"])
+    cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
     
-    partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e1), np.asarray(cost_e1), np.asarray(cost_e2), np.asarray(cost_c), int(pp_degree.item()), int(num_mb.item()), N, M, dp_degree)
+    partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), int(pp_degree.item()), int(num_mb.item()), N, M, dp_degree, node_type)
     
     #is_OOM = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
 

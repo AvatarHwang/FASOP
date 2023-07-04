@@ -60,12 +60,12 @@ want_simulate = []
 
 for cluster_info in cluster_combinations:
     num_node = len(cluster_info.keys())
-    gpu_of_cluster = []
+    node_type = []
     for i in range(num_node):
         if cluster_info[i][1] == torch.tensor([4800 * 1e9]).float():
-            gpu_of_cluster.append('p4d.24xlarge')
+            node_type.append('p4d.24xlarge')
         else:
-            gpu_of_cluster.append('g5.12xlarge')
+            node_type.append('g5.12xlarge')
 
     model_config = {"hidden_size": torch.tensor([int(args.hidden_size)]).float(), 
                     "sequence_length": torch.tensor([int(args.sequence_length)]).float(), 
@@ -110,7 +110,7 @@ for cluster_info in cluster_combinations:
             model_args = (fake_config, gbs, mbs, cluster_info, model_config, parallel_dim)    
 
             with torch.no_grad():
-                rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost = model(model_args)
+                rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost = model(model_args, node_type)
             
             
             for k in parallel_dim:
@@ -124,7 +124,7 @@ for cluster_info in cluster_combinations:
 
             price_per_s = price_per_s_1 + price_per_s_2 * (num_node - 1)
             price_per_step = price_per_s * cost.item() # price per second * second per step 
-            want_simulate.append((mbs,'*', parallel_dim,'*', gpu_of_cluster,'*', partition,'*', cost.item(),'*', pipecost.item(),'*', dp_side_cost.item(),'*', all_reduce_embedding_cost,'*', price_per_step))
+            want_simulate.append((mbs,'*', parallel_dim,'*', node_type,'*', partition,'*', cost.item(),'*', pipecost.item(),'*', dp_side_cost.item(),'*', all_reduce_embedding_cost,'*', price_per_step))
 
 print(f"Finished {time.time() - time_s}")
 
@@ -133,3 +133,5 @@ with open(record_file, "a") as fp:
     for item in sorted_settings:
         fp.write(f"rank {sorted_settings.index(item)}: {item}")
         fp.write("\n")
+
+print("file saved at: ", record_file)
