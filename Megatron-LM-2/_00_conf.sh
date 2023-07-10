@@ -5,29 +5,31 @@ CONTAINER_PATH="/scratch/enroot/$UID/data/megatron-latest"
 CONTAINER_NAME="megatron-latest"
 
 HOMOGENEOUS_CLUSTER=true
-MODEL='xl' # 'small' or 'xl'
-NPROC_PER_NODE=4
-NNODES=8
+MODEL="T5" # Bert / GPT / T5
+NPROC_PER_NODE=1
+NNODES=1
 WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
-GLOBAL_BATCH_SIZE=64
+GLOBAL_BATCH_SIZE=1
 MICRO_BATCH_SIZE=1
 TENSOR_MP_SIZE=1
-DP_SIZE=4
-PIPELINE_MP_SIZE=8
-PARTITION="0-11-8-8-8-8-5-0"
+DP_SIZE=1
+PIPELINE_MP_SIZE=1 #PARTITION="1-1" # It may not work for T5.
 NSYS=false
 PROFILE=false # 
-MASTER_PORT=6787
+MASTER_PORT=6777
 RELOAD_CONTAINER=false
 
 # set model specific arguments
-echo "MODEL size: $MODEL"
-if [ $MODEL == "xl" ]; then
+echo "MODEL : $MODEL"
+if [ $MODEL == "Bert" ]; then
+        HIDDEN_SIZE=1024
+        NUM_LAYERS=1
+elif [ $MODEL == "GPT" ]; then
         HIDDEN_SIZE=1600
         NUM_LAYERS=48
-elif [ $MODEL == "small" ]; then
+elif [ $MODEL == "T5" ]; then
         HIDDEN_SIZE=1024
-        NUM_LAYERS=24
+        NUM_LAYERS=12
 else
         echo error: invalid model argument MODEL only "xl" or "small" is allowed
         return 1

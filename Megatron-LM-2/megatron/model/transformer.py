@@ -838,7 +838,13 @@ def _get_num_layers(args, is_encoder_and_decoder_model, is_decoder=False):
                     'decoder_num_layers (%d) must be divisible by number of ranks given to decoder (%d)' % (args.decoder_num_layers, num_ranks_in_decoder)
             if mpu.is_pipeline_stage_before_split():
                 if args.balance :
-                    num_layers = int(args.balance[mpu.get_pipeline_model_parallel_rank()])
+                    balance=args.balance.split("-")
+                    num_layers = (
+                        0
+                        if args.standalone_embedding_stage
+                        and mpu.get_pipeline_model_parallel_rank() == 0 else
+                        int(balance[mpu.get_pipeline_model_parallel_rank()])
+                )
                 else:
                     num_layers = (
                         0
@@ -848,7 +854,7 @@ def _get_num_layers(args, is_encoder_and_decoder_model, is_decoder=False):
                 )
             else:
                 if args.balance :
-                    num_layers = int(args.balance[mpu.get_pipeline_model_parallel_rank()])
+                    num_layers = int(args.decoder_balance[mpu.get_pipeline_model_parallel_rank()])
                     # print("num_layers", num_layers)
                 else:
                     num_layers = args.decoder_num_layers // num_ranks_in_decoder
@@ -873,10 +879,13 @@ def _get_num_layers(args, is_encoder_and_decoder_model, is_decoder=False):
                     args.num_layers // args.transformer_pipeline_model_parallel_size
                 )
     else:
+        """
         if not is_decoder:
             num_layers = args.encoder_num_layers
         else:
             num_layers = args.decoder_num_layers
+        """
+        num_layers = args.num_layers
     return num_layers
 
 
