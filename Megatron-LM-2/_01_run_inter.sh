@@ -26,17 +26,29 @@ echo "NUM_LAYERS: $NUM_LAYERS"
 echo "PROFILE: $PROFILE"
 echo "PROFILE_ARGS: $PROFILE_ARGS"
 
+pip install nltk
+if [ $MODEL == "bert" ]; then
+        python tools/preprocess_data.py --input AA/wiki_00 --output-prefix my-bert --vocab-file bert-large-uncased-vocab.txt --tokenizer-type BertWordPieceLowerCase --split-sentences --workers 1 --chunk-size 1
+elif [ $MODEL == "T5" ]; then
+        python tools/preprocess_data.py --input AA/wiki_00 --output-prefix my-t5 --vocab-file bert-large-uncased-vocab.txt --tokenizer-type BertWordPieceLowerCase --split-sentences --workers 1 --chunk-size 1
+fi
+
 DISTRIBUTED_ARGS="--nproc_per_node $NPROC_PER_NODE \
                   --nnodes $NNODES \
                   --node_rank $NODE_RANK \
                   --master_addr $MASTER_ADDR \
                   --master_port $MASTER_PORT"
 
-DATA_PATH=/root/Megatron-LM/my-gpt2_text_document
-VOCAB_FILE=gpt2-vocab.json
-MERGE_FILE=gpt2-merges.txt
+OUTPUT_ARGS="--log-interval 10 \
+              --save-interval 100 \
+              --eval-interval 100 \
+              --eval-iters 10 $PROFILE_ARGS"
 
-MODEL_ARGS="--num-layers $NUM_LAYERS \
+if [ $MODEL == "gpt2" ]; then
+        DATA_PATH=/root/Megatron-LM/my-gpt2_text_document
+        VOCAB_FILE=gpt2-vocab.json
+        MERGE_FILE=gpt2-merges.txt
+        MODEL_ARGS="--num-layers $NUM_LAYERS \
         --hidden-size $HIDDEN_SIZE \
         --num-attention-heads 16 \
         --seq-length 1024 \
@@ -53,13 +65,43 @@ MODEL_ARGS="--num-layers $NUM_LAYERS \
         --fp16 \
         --balance $PARTITION" 
 
-OUTPUT_ARGS="--log-interval 10 \
-              --save-interval 100 \
-              --eval-interval 100 \
-              --eval-iters 10 $PROFILE_ARGS"
+elif [ $MODEL == "bert" ]; then
+        DATA_PATH=/root/Megatron-LM/my-bert_text_sentence
+        VOCAB_FILE=bert-large-uncased-vocab.txt
+        MERGE_FILE=--
+elif [ $MODEL == "T5" ]; then
+        DATA_PATH=/root/Megatron-LM/my-t5_text_sentence
+        VOCAB_FILE=bert-large-uncased-vocab.txt
+        MERGE_FILE=t5-merges.txt
+        MODEL_ARGS="--num-layers $NUM_LAYERS \
+                --hidden-size $HIDDEN_SIZE \
+                --num-attention-heads 12 \
+                --kv-channels 64 \
+                --ffn-hidden-size 3072 \
+                --encoder-seq-length 512 \
+                --decoder-seq-length 128 \
+                --max-position-embeddings 512 \
+                --micro-batch-size $MICRO_BATCH_SIZE \
+                --global-batch-size $GLOBAL_BATCH_SIZE \
+                --lr 0.0001 \
+                --train-iters 50 \
+                --lr-decay-iters 1000000 \
+                --lr-decay-style linear \
+                --min-lr 0.00001 \
+                --weight-decay 1e-2 \
+                --lr-warmup-fraction .01 \
+                --clip-grad 1.0 \
+                --fp16 \
+                --vocab-extra-ids 100 \
+                --vocab-file $VOCAB_FILE \
+                --merge-file $MERGE_FILE " 
+else
+        echo "Model not supported"
+        exit 1
+fi
 
-
-RUN_TORCH_SCRIPT=$(cat << EOF
+if [ $MODEL == "gpt2" ]; then
+        RUN_TORCH_SCRIPT=$(cat << EOF
 python -m torch.distributed.launch $DISTRIBUTED_ARGS _00_pretrain_gpt.py \
                 $MODEL_ARGS \
                 $OUTPUT_ARGS \
@@ -72,6 +114,35 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS _00_pretrain_gpt.py \
                 --split 100,0,0 
 EOF
 )
+elif [ $MODEL == "bert" ]; then
+        RUN_TORCH_SCRIPT=$(cat << EOF
+python -m torch.distributed.launch $DISTRIBUTED_ARGS _00_pretrain_gpt.py \
+                $MODEL_ARGS \
+                $OUTPUT_ARGS \
+                --data-path $DATA_PATH \
+                --tensor-model-parallel-size $TENSOR_MP_SIZE \
+                --pipeline-model-parallel-size $PIPELINE_MP_SIZE \
+                --DDP-impl local \
+                --no-async-tensor-model-parallel-allreduce \
+                --no-gradient-accumulation-fusion \
+                --split 100,0,0 
+EOF
+)
+else
+        RUN_TORCH_SCRIPT=$(cat << EOF
+python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_t5.py \
+                $MODEL_ARGS \
+                $OUTPUT_ARGS \
+                --data-path $DATA_PATH \
+                --tensor-model-parallel-size $TENSOR_MP_SIZE \
+                --pipeline-model-parallel-size $PIPELINE_MP_SIZE \
+                --DDP-impl local \
+                --no-async-tensor-model-parallel-allreduce \
+                --no-gradient-accumulation-fusion \
+                --split 100,0,0
+EOF
+)
+fi
 
 function run_torch() {
         OMP_NUM_THREADS=4 $RUN_TORCH_SCRIPT
