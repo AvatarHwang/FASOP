@@ -60,8 +60,8 @@ class FASOP(nn.Module):
         config, bs, micro_bs, cluster_info, model_config, oth = args
         amp_config = {"profile_cost_a100" : self.profile_cost_A100,
                       "profile_cost_a10" : self.profile_cost_A10}
-        rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost = predict(config, bs, micro_bs, cluster_info, model_config, amp_config, oth, node_type)
-        return rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost
+        rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem = predict(config, bs, micro_bs, cluster_info, model_config, amp_config, oth, node_type)
+        return rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem
         
 # pipeline communication cost, return shape: (L-1, pp-1)
 def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index=0):
@@ -332,8 +332,8 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     
     partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), int(pp_degree.item()), int(num_mb.item()), N, M, dp_degree, node_type)
     
-    #is_OOM = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
-
+    is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
+    
     pipecost_last, stage_wise_cost_lst = schedule(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, stage_back_send_time_lst)
     # translate to ds form, add data parallelism cost
     _, dp_cost_list = dp_cost(config, cluster_info=cluster_info, 
@@ -352,40 +352,66 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     
     dp_side_cost_last = dp_cost_list[max_latency_index]
 
-    return rank_map, partition, cost_last, pipecost_last, dp_side_cost_last, all_reduce_embedding_cost
+    return rank_map, partition, cost_last, pipecost_last, dp_side_cost_last, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem
     
 
 def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info):
     h = model_config["hidden_size"] 
     v = model_config["vocab_size"]
-    seq_len = model_config["sequence_length"]
-    num_head = model_config["num_attention_heads"]
-    mp = parallel_config["mp"] 
-    mbs = parallel_config["micro_bs"]
+    s = model_config["sequence_length"]
+    a = model_config["num_attention_heads"]
+    tp = parallel_config["mp"] 
+    dp = parallel_config["dp"]
+    b = parallel_config["micro_bs"]
     memory = []
+    memory_zero = []
     for stage in partition:
-        param_count=0
-        avtivation = 0
-        pipeline_buffer = 0
+        param_count = 0 # unit: bytes
+        activation = 0 # unit: bytes
+        # pipeline_buffer = 0
         for i in range(stage):
-            if layer_type[i] == "embedding_layer":
+            if layer_type[i] == "embedding_layer" :
                 param_count += h * v
-                avtivation += mbs * seq_len * h
+                activation = 0
             elif layer_type[i] == "transformer_layer":
-                param_count += 12 * h ** 2 / mp
-                avtivation += 9 * mbs * seq_len * h + mbs * seq_len ** 2 * num_head
-                if i == 0:
-                    pipeline_buffer += mbs * seq_len * h # BLH
+                param_count += 12 * h ** 2
+                activation += ( (s * b * h) * (34 + 5 * (a * s) / h) ) / tp # tensor + sequence 
+                # if i == 0:
+                    # pipeline_buffer += mbs * seq_len * h # BLH
             else:
                 pass
-        memory.append((param_count + avtivation + pipeline_buffer) * 16 / 8 / 1024 / 1024 / 1024)
+        major = param_count * 18
+        major_zero = param_count * (6 + int(12 / dp))
+        
+        memory.append((major + activation) / 1024 /1024 /1024)
+        memory_zero.append((major_zero + activation) / 1024 / 1024 /1024)
+    
 
-    OOM = False
-    for i in range(len(cluster_info)):
-        if cluster_info[i][1] == torch.tensor([4800 * 1e9]).float():
-            memory_max = 40536/1024
+    oom = False
+    oom_zero = False
+    error_percent=1.05
+    
+    oom_gpumem = max(memory)
+    zerooom_gpumem = max(memory_zero)
+    # debug    
+    # print(f"partition size: {len(partition)}, \n partition: {partition}")
+    # print(f"cluster size: {len(cluster_info)}, \n cluster_info: {cluster_info}")
+    # print(f"memory size: {len(memory)}, oom_gpumem: {oom_gpumem}, \n {memory}")
+    # print(f"memory zero size: {len(memory_zero)}, zerooom_gpumem: {zerooom_gpumem}, \n {memory_zero}")
+    
+    for i in range(len(partition)):
+        if torch.tensor([230*8 * 1e9]).float() in cluster_info:
+            memory_max = 39.59
         else:
-            memory_max = 23028/1024
-        if memory[i] > memory_max:
-            OOM = True
-    return OOM
+            memory_max = 22.20
+        
+        if (memory[i] * error_percent) > memory_max:
+            oom = True
+        
+        if (memory_zero[i] * error_percent) > memory_max:
+            oom_zero = True    
+    # debug              
+    # print(f"is oom: {oom}")
+    # print(f"is zero oom: {oom_zero}")
+                
+    return oom, oom_gpumem, oom_zero, zerooom_gpumem
