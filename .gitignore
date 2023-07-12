@@ -64,3 +64,14 @@ FASOP_bk/main_logs/gpt1.5b.txt
 FASOP_bk/main_logs/gpt345m.txt
 HetGPT/main_logs/gtp2-1.5b.txt
 HetGPT/main_logs/het_cluster_1682576001.txt
+FASOP_bk/device_placement.py
+FASOP/main_logs/pareto.txt
+FASOP/main_logs/pareto.txt
+FASOP_bk/Find_GLIBCXX_3.4.21.sh
+FASOP_bk/main_logs/gpt1.5b.csv
+FASOP_bk/main_logs/pareto_100-100.v3.txt
+FASOP_bk/main_logs/pareto.txt
+Megatron-LM-2/slurm-10939946.out
+Megatron-LM-2/slurm-10939948.out
+Megatron-LM-2/slurm-10939950.out
+Megatron-LM-2/slurm-10939952.out

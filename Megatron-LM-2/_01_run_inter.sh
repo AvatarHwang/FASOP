@@ -73,28 +73,56 @@ elif [ $MODEL == "T5" ]; then
         DATA_PATH=/root/Megatron-LM/my-t5_text_sentence
         VOCAB_FILE=bert-large-uncased-vocab.txt
         MERGE_FILE=t5-merges.txt
-        MODEL_ARGS="--num-layers $NUM_LAYERS \
-                --hidden-size $HIDDEN_SIZE \
-                --num-attention-heads 12 \
-                --kv-channels 64 \
-                --ffn-hidden-size 3072 \
-                --encoder-seq-length 512 \
-                --decoder-seq-length 128 \
-                --max-position-embeddings 512 \
-                --micro-batch-size $MICRO_BATCH_SIZE \
-                --global-batch-size $GLOBAL_BATCH_SIZE \
-                --lr 0.0001 \
-                --train-iters 50 \
-                --lr-decay-iters 1000000 \
-                --lr-decay-style linear \
-                --min-lr 0.00001 \
-                --weight-decay 1e-2 \
-                --lr-warmup-fraction .01 \
-                --clip-grad 1.0 \
-                --fp16 \
-                --vocab-extra-ids 100 \
-                --vocab-file $VOCAB_FILE \
-                --merge-file $MERGE_FILE " 
+        if [ $PIPELINE_MP_SIZE > 1 ]; then
+                MODEL_ARGS="--encoder-num-layers $ENCODER_NUM_LAYERS\
+                        --decoder-num-layers $DECODER_NUM_LAYERS\
+                        --pipeline-model-parallel-split-rank $PIPELINE_MODEL_PARALLEL_SPLIT_RANK \
+                        --hidden-size $HIDDEN_SIZE \
+                        --num-attention-heads 32 \
+                        --kv-channels 128 \
+                        --ffn-hidden-size 3072 \
+                        --encoder-seq-length 512 \
+                        --decoder-seq-length 128 \
+                        --max-position-embeddings 512 \
+                        --micro-batch-size $MICRO_BATCH_SIZE \
+                        --global-batch-size $GLOBAL_BATCH_SIZE \
+                        --lr 0.0001 \
+                        --train-iters 50 \
+                        --lr-decay-iters 1000000 \
+                        --lr-decay-style linear \
+                        --min-lr 0.00001 \
+                        --weight-decay 1e-2 \
+                        --lr-warmup-fraction .01 \
+                        --clip-grad 1.0 \
+                        --fp16 \
+                        --vocab-extra-ids 100 \
+                        --vocab-file $VOCAB_FILE \
+                        --merge-file $MERGE_FILE "
+        else
+                MODEL_ARGS="--encoder-num-layers $ENCODER_NUM_LAYERS\
+                        --decoder-num-layers $DECODER_NUM_LAYERS\
+                        --hidden-size $HIDDEN_SIZE \
+                        --num-attention-heads 12 \
+                        --kv-channels 64 \
+                        --ffn-hidden-size 3072 \
+                        --encoder-seq-length 512 \
+                        --decoder-seq-length 128 \
+                        --max-position-embeddings 512 \
+                        --micro-batch-size $MICRO_BATCH_SIZE \
+                        --global-batch-size $GLOBAL_BATCH_SIZE \
+                        --lr 0.0001 \
+                        --train-iters 50 \
+                        --lr-decay-iters 1000000 \
+                        --lr-decay-style linear \
+                        --min-lr 0.00001 \
+                        --weight-decay 1e-2 \
+                        --lr-warmup-fraction .01 \
+                        --clip-grad 1.0 \
+                        --fp16 \
+                        --vocab-extra-ids 100 \
+                        --vocab-file $VOCAB_FILE \
+                        --merge-file $MERGE_FILE " 
+        fi
 else
         echo "Model not supported"
         exit 1

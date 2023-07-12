@@ -2,13 +2,13 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=hgx
-#SBATCH --gres=gpu:hgx:4
+#SBATCH --gres=gpu:hgx:2
 #SBATCH --cpus-per-task=14
 #SBATCH -o ../log2/%j.sbatch.%N.out         
 #SBATCH -e ../log2/%j.sbatch.%N.err         
 
 #************************************************************
-GRES="gpu:hgx:4"
+GRES="gpu:hgx:2"
 . _00_conf.sh
 #************************************************************
 

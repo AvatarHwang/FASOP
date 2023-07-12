@@ -38,13 +38,13 @@ class Stage:
         return self.comm_time+self.comp_time
 
 
-def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_mb, num_node, gpu_per_node, dp_degree, node_type):
+def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_node, gpu_per_node, node_type):
 
     num_balanced_layer = num_layer // pp_degree
     partition = []
     for i in range(pp_degree):
         partition.append(num_balanced_layer)
-    rest = num_layer - (num_balanced_layer * pp_degree)
+    rest = int(num_layer - (num_balanced_layer * pp_degree))
     for i in range(rest):
         partition[i-1] += 1
 
