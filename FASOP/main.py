@@ -23,7 +23,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gbs", type=int, default=64)
-parser.add_argument("--exp_name", type=str, default="het_cluster")
+parser.add_argument("--exp_name", type=str, default="homo4,8")
 parser.add_argument("--model_config", type=str, default="gpt2XL")
 parser.add_argument("--hidden_size", type=int, default=1600)
 parser.add_argument("--sequence_length", type=int, default=1024)
@@ -105,7 +105,7 @@ for cluster_info in cluster_combinations:
 
     config_h = int((model_config["hidden_size"]).item())
     config_n = int(model_config["num_layers"].item())
-    exp_name = f"gpt1.5b-homo4,8-2"
+    exp_name = f"{args.type}-{args.exp_name}"
     # record_file = f"{os.path.join(dir_path, exp_name)}.txt"
     record_file = f"{os.path.join(dir_path, exp_name)}.csv"
 
@@ -167,9 +167,9 @@ for cluster_info in cluster_combinations:
             want_simulate["all_reduce_embedding_cost"].append(all_reduce_embedding_cost)
             want_simulate["price_per_step"].append(price_per_step)
             want_simulate["is_oom"].append(is_oom)
-            want_simulate["oom_gpumem"].append(oom_gpumem.item())
+            want_simulate["oom_gpumem"].append(oom_gpumem)
             want_simulate["is_zero_oom"].append(is_zero_oom)
-            want_simulate["zerooom_gpumem"].append(zerooom_gpumem.item())
+            want_simulate["zerooom_gpumem"].append(zerooom_gpumem)
             
             # want_simulate.append((mbs,parallel_dim,node_type,partition,cost.item(),pipecost.item(),dp_side_cost.item(),all_reduce_embedding_cost,price_per_step,is_oom,oom_gpumem.item(),is_zero_oom,zerooom_gpumem.item()))
 print(f"Finished {time.time() - time_s}")
