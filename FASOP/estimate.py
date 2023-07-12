@@ -333,6 +333,11 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     pp_degree = int(pp_degree.item())
     if "T5" not in model_type:
         partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, N, M, node_type)
+        pipecost_last, stage_wise_cost_lst = schedule(pp_degree, 
+                                                                num_mb, stage_comp_time_lst, 
+                                                                stage_for_send_time_lst, 
+                                                                stage_back_send_time_lst)
+        is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
     else:
         if pp_degree>1:
             PP_C = []
@@ -422,7 +427,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     tp = parallel_config["mp"] 
     dp = parallel_config["dp"]
     b = parallel_config["micro_bs"]
-    N = len(cluster_info.keys())
+    N = len(cluster_info)
     memory = []
     memory_zero = []
     for stage in partition:
