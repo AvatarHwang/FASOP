@@ -29,7 +29,6 @@ class FASOP(nn.Module):
         self.model_config = model_config
         self.exp_name = "init_" + exp_name 
         self.model_type = model_config["type"]
-        print("model_type: ", self.model_type)
         self.cluster_info0 = cluster_info0
         self.cluster_info1 = cluster_info1
         self.init_param()
@@ -194,7 +193,7 @@ def cost_all_reduce_embedding(model_config, cluster_info, parallel_config, gpu_p
         # else, we assume the bandwidth is shared by all gpu_per_node
         band_width = slowest_bandwidth/min(dp_degree, gpu_per_node) 
         embedding_syn_cost = 2*(2-1)*(hidden_size*vocab_size*precision)/(2*band_width)/tp_degree
-        return embedding_syn_cost
+        return embedding_syn_cost.item()
     else:
         return 0
         
@@ -271,7 +270,8 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
 
 
 def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_type):
-    L = model_config["num_layers"]
+    L = int(model_config["num_layers"])
+    model_type = model_config["type"]
     cost = torch.zeros(1,)
     M, N = config.shape
     config = np.asarray(config)
@@ -330,11 +330,68 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
     
-    partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), int(pp_degree.item()), int(num_mb.item()), N, M, dp_degree, node_type)
-    
-    #is_OOM = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
+    pp_degree = int(pp_degree.item())
+    if "T5" not in model_type:
+        partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, N, M, node_type)
+    else:
+        if pp_degree>1:
+            PP_C = []
+            for pp_encoder in range(1, min(pp_degree, len(cost_e_a100))):
+                pp_decoder = pp_degree - pp_encoder
+                if pp_decoder <= L/2:
+                    PP_C.append([pp_encoder, pp_decoder])
+            
+            pipecost_last = 100000
+            for pp_c in PP_C:
+                pp_en, pp_de = pp_c
+                if pp_degree>=N:
+                    num_node_en = int(pp_en / (pp_degree//N))
+                    num_node_de = int(pp_de / (pp_degree//N))
+                    if num_node_en == 0 or num_node_de == 0:
+                        continue
+                else:
+                    num_node_en = int(pp_en * (N / pp_degree))
+                    num_node_de = int(pp_de * (N / pp_degree))
+                partition_en, stage_comp_time_lst_en, _, _, stage_for_send_time_lst_en, stage_back_send_time_lst_en = minmax(int(len(cost_e_a100)/2), 
+                                                    np.asarray(cost_e_a100), 
+                                                    np.asarray(cost_e_a10), 
+                                                    np.asarray(cost_c), 
+                                                    pp_en, 
+                                                    num_node_en, M, 
+                                                    node_type[:num_node_en])
+                partition_de, stage_comp_time_lst_de, _, _, stage_for_send_time_lst_de, stage_back_send_time_lst_de = minmax(int(len(cost_e_a100)/2),
+                                                    np.asarray(cost_e_a100), 
+                                                    np.asarray(cost_e_a10), 
+                                                    np.asarray(cost_c), 
+                                                    pp_de,
+                                                    num_node_de, M, 
+                                                    node_type[num_node_en:])
+                
+                partition_temp = partition_en + partition_de
+                stage_comp_time_lst_temp = stage_comp_time_lst_en + stage_comp_time_lst_de
+                stage_for_send_time_lst_temp = stage_for_send_time_lst_en + stage_for_send_time_lst_de
+                stage_back_send_time_lst_temp = stage_back_send_time_lst_en + stage_back_send_time_lst_de
+                #is_OOM = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
+                pipecost_last_temp, stage_wise_cost_lst_temp = schedule(pp_degree, num_mb, stage_comp_time_lst_temp, stage_for_send_time_lst_temp, stage_back_send_time_lst_temp)
+                if pipecost_last_temp < pipecost_last:
+                    pipecost_last = pipecost_last_temp
+                    partition = partition_temp
+                    stage_comp_time_lst = stage_comp_time_lst_temp
+                    stage_for_send_time_lst = stage_for_send_time_lst_temp
+                    stage_back_send_time_lst = stage_back_send_time_lst_temp
+                    stage_wise_cost_lst = stage_wise_cost_lst_temp
+        else:
+            partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst = minmax(int(len(cost_e_a100)),
+                                                    np.asarray(cost_e_a100), 
+                                                    np.asarray(cost_e_a10), 
+                                                    np.asarray(cost_c), 
+                                                    pp_degree,
+                                                    N, M, 
+                                                    node_type)
+            #is_OOM = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
+            pipecost_last, stage_wise_cost_lst = schedule(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, stage_back_send_time_lst)
 
-    pipecost_last, stage_wise_cost_lst = schedule(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, stage_back_send_time_lst)
+    
     # translate to ds form, add data parallelism cost
     _, dp_cost_list = dp_cost(config, cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, 
