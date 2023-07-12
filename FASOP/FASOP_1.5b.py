@@ -127,7 +127,7 @@ for cluster_info in cluster_combinations:
                 model_args = (fake_config, gbs, mbs, d, model_config, parallel_dim)    
 
                 with torch.no_grad():
-                    rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost = model(model_args, node_type)
+                    rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem = model(model_args, node_type)
                 
                 for k in parallel_dim:
                     parallel_dim[k] = int(parallel_dim[k].item())
@@ -140,13 +140,13 @@ for cluster_info in cluster_combinations:
 
                 price_per_s = price_per_s_1 + price_per_s_2 * (num_node - 1)
                 price_per_step = price_per_s * cost.item() # price per second * second per step 
-                want_simulate.append((mbs, h, w,(gpu_per_node*num_node/(h*w)), node_type, partition, cost.item(), pipecost.item(), dp_side_cost.item(), all_reduce_embedding_cost, price_per_step))
+                want_simulate.append((mbs, h, w,(gpu_per_node*num_node/(h*w)), node_type, partition, cost.item(), pipecost.item(), dp_side_cost.item(), all_reduce_embedding_cost, price_per_step, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem))
 
 print(f"Finished {time.time() - time_s}")
 
 sorted_settings = sorted(want_simulate, key = lambda kv: kv[6])
 
-df = pd.DataFrame(sorted_settings, columns = ['mbs','tp','dp','pp','node placement','partition','estimated time (step/s)','pipeline time','DP all-reduce time','embedding layer all-reduce time','price_per_step'])
+df = pd.DataFrame(sorted_settings, columns = ['mbs','tp','dp','pp','node placement','partition','estimated time (step/s)','pipeline time','DP all-reduce time','embedding layer all-reduce time','price_per_step','is_oom','oom_gpumem','is_zero_oom','zerooom_gpumem'])
 df.to_csv(f"{os.path.join(dir_path, exp_name)}.csv", index=False)
 
 print("csv file saved at: ", f"{os.path.join(dir_path, exp_name)}.csv")
