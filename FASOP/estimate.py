@@ -149,7 +149,7 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost):
         for layer_id in range(_num_layer):
             layer_type = _layer[layer_id]
             if layer_type == "embedding_layer" or layer_type == "post_process":
-                if cluster_info[0][1] == torch.tensor([252 * 1e9]):
+                if cluster_info[0][1] == torch.tensor([122 * 1e9]):
                     cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
                 else:
                     cur_layer = profile_cost[str(int(mp.item()))][layer_id]
@@ -363,6 +363,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     tp = parallel_config["mp"] 
     dp = parallel_config["dp"]
     b = parallel_config["micro_bs"]
+    N = len(cluster_info.keys())
     memory = []
     memory_zero = []
     for stage in partition:
@@ -390,7 +391,8 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     oom = False
     oom_zero = False
     error_percent=1.05
-    
+    # oom_gpumem = 0.0
+    # zerooom_gpumem = 0.0
     oom_gpumem = max(memory)
     zerooom_gpumem = max(memory_zero)
     # debug    
@@ -400,18 +402,42 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     # print(f"memory zero size: {len(memory_zero)}, zerooom_gpumem: {zerooom_gpumem}, \n {memory_zero}")
     
     for i in range(len(partition)):
-        if torch.tensor([230*8 * 1e9]).float() in cluster_info:
-            memory_max = 39.59
+        if len(partition) > N:
+            a = int(len(partition) / N)
+            j = int(i / a)
+        elif len(partition) == N:
+            j = i
         else:
-            memory_max = 22.20
+            j = None
+
+        if j is not None:
+            # print(f"cluster_info: {cluster_info[j]}")
+            if cluster_info[j][1] == torch.tensor([230 * 8 * 1e9]).float():
+                memory_max = 39.59
+            else:
+                memory_max = 22.20
+        else:
+            s = i * int(N/len(partition))
+            e = (i + 1) * int(N/len(partition)) -1
+            for j in range(s, e):
+                if cluster_info[j][1] == torch.tensor([230 * 8 * 1e9]).float():
+                    memory_max = 39.59
+                else:
+                    memory_max = 22.20    
         
+        # print(f"memory_max: {memory_max}")
         if (memory[i] * error_percent) > memory_max:
             oom = True
+            oom_gpumem = memory[i] * error_percent
         
         if (memory_zero[i] * error_percent) > memory_max:
-            oom_zero = True    
+            oom_zero = True
+            zerooom_gpumem = memory_zero[i] * error_percent
     # debug              
     # print(f"is oom: {oom}")
     # print(f"is zero oom: {oom_zero}")
+    
+    # print(f"is oom_gpumem: {oom_gpumem}")
+    # print(f"is zerooom_gpumem: {zerooom_gpumem}")
                 
     return oom, oom_gpumem, oom_zero, zerooom_gpumem
