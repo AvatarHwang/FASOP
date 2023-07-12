@@ -38,7 +38,7 @@ def factor(N, upper=None):
     return ret
 
 
-def amp_no_placement_strategy(M, N, gbs, known):
+def amp_no_placement_strategy(M, N, gbs, known, num_layers):
     if known is None:
         known = defaultdict(list)
         ele_count = 0
@@ -55,7 +55,7 @@ def amp_no_placement_strategy(M, N, gbs, known):
                     continue
                 if gbs % (w) != 0:
                     continue
-                if pp_degree > 48: #TODO: args.num_layers
+                if pp_degree > num_layers:
                     continue
                 for mbs in factor(gbs // w):
                     ele_count += 1
