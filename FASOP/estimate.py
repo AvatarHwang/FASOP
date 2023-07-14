@@ -63,7 +63,7 @@ class FASOP(nn.Module):
         return rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem
         
 # pipeline communication cost, return shape: (L-1, pp-1)
-def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index=0):
+def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index=0, _layer=None):
     h = model_config["hidden_size"]
     s = model_config["sequence_length"]
     n = model_config["num_layers"]
@@ -74,15 +74,6 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
     pp = parallel_config["pp"]
     
     precision = torch.ones(1)*16 # TODO: support fp32, should be args.precision
-
-    _layer = ["embedding_layer"]
-    for i in range(int(n.item())):
-        _layer.append("transformer_layer")
-
-    if int(pp.item()) > 1:
-        _layer.append("embedding_layer")
-    else:
-        _layer.append("None")
 
     _num_layer = len(_layer)
 
@@ -125,17 +116,12 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
     return cost_c.values, _layer
 
 # execution cost for one layer, return shape (L,)
-def get_cost_e(cluster_info, model_config, parallel_config, profile_cost):    
+def get_cost_e(cluster_info, model_config, parallel_config, profile_cost, _layer=None):    
     n = model_config["num_layers"]
     bs = parallel_config["micro_bs"]
     mp = parallel_config["mp"]
     dp = parallel_config["dp"]
     pp = parallel_config["pp"]
-
-    _layer = ["embedding_layer"]
-    for i in range(int(n.item())):
-        _layer.append("transformer_layer")
-    _layer.extend(["post_process"])
 
     _num_layer = len(_layer)
             
@@ -199,7 +185,7 @@ def cost_all_reduce_embedding(model_config, cluster_info, parallel_config, gpu_p
         
 
 
-def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, partition):
+def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, partition, _layer=None, gpu_per_node=4):
     h = model_config["hidden_size"]
     n = model_config["num_layers"]
     v = model_config["vocab_size"]
@@ -208,13 +194,6 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     dp = parallel_config["dp"]
     pp = parallel_config["pp"]
     
-    _layer = ["embedding_layer"]
-    for i in range(int(n.item())):
-        _layer.append("transformer_layer")
-    if pp>1:
-        _layer.extend(["embedding_layer"])    
-    else:
-        _layer.extend(["post_process"])
     _num_layer = len(_layer)
         
     # First translate to deepspeed partition form
@@ -254,7 +233,6 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         # get slowest of bandwidth
         bandwidth = min(bandwidth_lst)
 
-        gpu_per_node = 4 #TODO: shoud be args
         # Inter-node bandwidth share
         if int(mp.item())*int(dp.item()) > gpu_per_node and int(dp.item())>1:
             bandwidth = bandwidth / int(mp.item())
@@ -319,24 +297,25 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                 rank_counter[cur_pp] += 1
             
     num_mb = gbs / (dp_degree * mbs)
-    mbs = gbs / (dp_degree * num_mb)
             
     parallel_config = {"mp" : tp_degree, "dp" : dp_degree, "pp" : pp_degree, "micro_bs" : mbs, "rank_map" : rank_map, "rank_node_map": rank_node_map}
-        
-    cost_e_a100 = get_cost_e(cluster_info=cluster_info, 
-                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a100"])
-    cost_e_a10 = get_cost_e(cluster_info=cluster_info, 
-                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a10"])
-    cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
-                        model_config=model_config, parallel_config=parallel_config, amp_config=amp_config)
     
     pp_degree = int(pp_degree.item())
+    _layer = get_layer_type(model_type=model_type, n=L, pp=pp_degree)
+
+    cost_e_a100 = get_cost_e(cluster_info=cluster_info, 
+                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a100"], _layer=_layer)
+    cost_e_a10 = get_cost_e(cluster_info=cluster_info, 
+                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a10"], _layer=_layer)
+    cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
+                        model_config=model_config, parallel_config=parallel_config, amp_config=amp_config, _layer=_layer)
+        
     if "T5" not in model_type:
         partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, N, M, node_type)
         pipecost_last, stage_wise_cost_lst = schedule(pp_degree, 
-                                                                num_mb, stage_comp_time_lst, 
-                                                                stage_for_send_time_lst, 
-                                                                stage_back_send_time_lst)
+                                                    num_mb, stage_comp_time_lst, 
+                                                    stage_for_send_time_lst, 
+                                                    stage_back_send_time_lst)
         is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
     else:
         if pp_degree>1:
@@ -346,7 +325,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                 if pp_decoder <= L/2:
                     PP_C.append([pp_encoder, pp_decoder])
             
-            pipecost_last = 100000
+            pipecost_last = 1000000
             for pp_c in PP_C:
                 pp_en, pp_de = pp_c
                 if pp_degree>=N:
@@ -402,9 +381,12 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     # translate to ds form, add data parallelism cost
     _, dp_cost_list = dp_cost(config, cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, 
-                        amp_config=amp_config, partition=partition)
+                        amp_config=amp_config, partition=partition, _layer=_layer, gpu_per_node=M)
     
-    all_reduce_embedding_cost = cost_all_reduce_embedding(model_config, cluster_info, parallel_config, M)
+    if model_type != "T5":
+        all_reduce_embedding_cost = cost_all_reduce_embedding(model_config, cluster_info, parallel_config, M)
+    else:
+        all_reduce_embedding_cost = 0
 
     end2end_stage_latency=[]
     for i in range(len(stage_wise_cost_lst)):
@@ -505,3 +487,21 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     # print(f"is zerooom_gpumem: {zerooom_gpumem}")
                 
     return oom, oom_gpumem, oom_zero, zerooom_gpumem
+
+def get_layer_type(model_type, n, pp):
+    _layer = ["embedding_layer"]
+    if model_type != "T5":
+        for i in range(n):
+            _layer.append("transformer_layer")
+        if pp > 1:
+            _layer.append("embedding_layer")
+        else:
+            _layer.append("None")
+    else:
+        for i in range(int(n/2)):
+            _layer.append("transformer_layer")
+        _layer.append("embedding_layer")
+        for i in range(int(n/2)):
+            _layer.append("transformer_layer")
+
+    return _layer

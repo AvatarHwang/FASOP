@@ -7,19 +7,20 @@ CONTAINER_NAME="megatron-latest"
 HOMOGENEOUS_CLUSTER=true
 MODEL="T5" # Bert / GPT / T5
 NPROC_PER_NODE=4
-NNODES=1
+NNODES=4
 WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
-GLOBAL_BATCH_SIZE=1
+GLOBAL_BATCH_SIZE=128
 MICRO_BATCH_SIZE=1
-TENSOR_MP_SIZE=4
-DP_SIZE=1
-PIPELINE_MP_SIZE=1 #PARTITION="1-1" # It may not work for T5.
+TENSOR_MP_SIZE=1
+DP_SIZE=4
+PIPELINE_MP_SIZE=4
+PARTITION="13-12-13-12"
 NSYS=false
-PROFILE=false # 
-MASTER_PORT=6777
+PROFILE=true 
+MASTER_PORT=6778
 RELOAD_CONTAINER=false
 
-PIPELINE_MODEL_PARALLEL_SPLIT_RANK=2
+PIPELINE_MODEL_PARALLEL_SPLIT_RANK=2 # Where the encoder ends within the pipeline group
 
 # set model specific arguments
 echo "MODEL : $MODEL"
@@ -31,11 +32,11 @@ elif [ $MODEL == "GPT" ]; then
         NUM_LAYERS=48
 elif [ $MODEL == "T5" ]; then
         HIDDEN_SIZE=512
-        NUM_LAYERS=12
+        NUM_LAYERS=48
         ENCODER_NUM_LAYERS=$((NUM_LAYERS / 2))
         DECODER_NUM_LAYERS=$((NUM_LAYERS / 2))
 else
-        echo error: invalid model argument MODEL only "xl" or "small" is allowed
+        echo error: invalid model argument MODEL only "Bert/GPT/T5" is allowed
         return 1
 fi
 

@@ -130,7 +130,6 @@ def get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, num_node, gpu_
             else:
                 assert False, "node type is not recognized"
 
-
         if stage == 0:
             stage_latency[stage].set_comp_time(sum(cost_e[:partition[0]]))
             stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())

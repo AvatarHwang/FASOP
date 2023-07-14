@@ -1,5 +1,66 @@
 
 
+def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneous=False):
+    """
+    Returns all possible cluster combinations for the given model type
+    """
+    cluster_info={}
+    if model_type == "gpt2XL":
+        if pareto:
+            assert False, "Pareto only supported for T5"
+        if heterogeneous==True:
+            cluster_info[0]= '1'
+            for i in range(1, 8):
+                cluster_info[i] = '0'
+        else:
+            for i in range(8):
+                cluster_info[i] = '0'
+        cluster_combinations = [cluster_info]
+        return cluster_combinations
+    elif model_type == "bert":
+        if pareto==True:
+            assert False, "Pareto only supported for T5"
+        if heterogeneous==True:
+            cluster_info[0]= '1'
+            for i in range(1, 4):
+                cluster_info[i] = '0'
+        else:
+            for i in range(4):
+                cluster_info[i] = '0'
+        cluster_combinations = [cluster_info]
+        return cluster_combinations
+    elif model_type == "T5":
+        if pareto!=True:
+            if heterogeneous:
+                cluster_info[0] = '1'
+                for i in range(1, 8):
+                    cluster_info[i] = '0'
+                cluster_combinations = [cluster_info]
+                return cluster_combinations
+            else:
+                cluster_combinations = []
+                for i in range(4):
+                    cluster_info[i] = '0'
+                cluster_combinations.append(cluster_info)        
+                return cluster_combinations
+        else:
+            num_c = 0
+            cluster_combinations = []
+            for num_a100 in range(1, 8+1):
+                for num_a10 in range(1, 8+1):
+                    cluster = {}
+                    for i in range(num_a100+num_a10):
+                        cluster[i] = '0'
+                    for i in range(num_a100):
+                        cluster.update({i:'1'})
+                    if len(cluster.keys())>0:
+                        cluster_combinations.append(cluster)
+                    num_c += 1
+            print(f"Number of clusters combinations: {num_c}")
+    else:
+        assert False, "Model type not supported"
+
+
 def device_placement(num_a100, num_a10):
     a100_nodes = ''
     a10_nodes = ''
