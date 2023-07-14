@@ -1,14 +1,14 @@
 #!/bin/bash
-#SBATCH --nodes=4
+#SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1              
-#SBATCH --partition=gpu2
-#SBATCH --gres=gpu:a10:4
+#SBATCH --partition=hgx
+#SBATCH --gres=gpu:hgx:1
 #SBATCH --cpus-per-task=14
 #SBATCH -o ../log2/%j.sbatch.%N.out         
 #SBATCH -e ../log2/%j.sbatch.%N.err
 
 #************************************************************
-GRES="gpu:a10:4"
+GRES="gpu:hgx:1"
 . _00_conf.sh
 #************************************************************
 
