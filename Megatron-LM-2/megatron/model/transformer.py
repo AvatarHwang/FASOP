@@ -850,10 +850,11 @@ def _get_num_layers(args, is_encoder_and_decoder_model, is_decoder=False):
                         0
                         if args.standalone_embedding_stage
                         and mpu.get_pipeline_model_parallel_rank() == 0 else
-                        int(balance[mpu.get_pipeline_model_parallel_rank()])
+                        args.encoder_num_layers // num_ranks_in_encoder
                 )
             else:
                 if args.balance :
+                    balance=args.balance.split("-")
                     num_layers = int(balance[mpu.get_pipeline_model_parallel_rank()])
                     # print("num_layers", num_layers)
                 else:

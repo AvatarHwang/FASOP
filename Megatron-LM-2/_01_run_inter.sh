@@ -26,12 +26,12 @@ echo "NUM_LAYERS: $NUM_LAYERS"
 echo "PROFILE: $PROFILE"
 echo "PROFILE_ARGS: $PROFILE_ARGS"
 
-pip install nltk
-if [ $MODEL == "bert" ]; then
-        python tools/preprocess_data.py --input AA/wiki_00 --output-prefix my-bert --vocab-file bert-large-uncased-vocab.txt --tokenizer-type BertWordPieceLowerCase --split-sentences --workers 1 --chunk-size 1
-elif [ $MODEL == "T5" ]; then
-        python tools/preprocess_data.py --input AA/wiki_00 --output-prefix my-t5 --vocab-file bert-large-uncased-vocab.txt --tokenizer-type BertWordPieceLowerCase --split-sentences --workers 1 --chunk-size 1
-fi
+# pip install nltk
+# if [ $MODEL == "bert" ]; then
+#         python tools/preprocess_data.py --input AA/wiki_00 --output-prefix my-bert --vocab-file bert-large-uncased-vocab.txt --tokenizer-type BertWordPieceLowerCase --split-sentences --workers 1 --chunk-size 1
+# elif [ $MODEL == "T5" ]; then
+#         python tools/preprocess_data.py --input AA/wiki_00 --output-prefix my-t5 --vocab-file bert-large-uncased-vocab.txt --tokenizer-type BertWordPieceLowerCase --split-sentences --workers 1 --chunk-size 1
+# fi
 
 DISTRIBUTED_ARGS="--nproc_per_node $NPROC_PER_NODE \
                   --nnodes $NNODES \
@@ -82,7 +82,7 @@ elif [ $MODEL == "T5" ]; then
                         --kv-channels 128 \
                         --ffn-hidden-size 3072 \
                         --encoder-seq-length 512 \
-                        --decoder-seq-length 128 \
+                        --decoder-seq-length 512 \
                         --max-position-embeddings 512 \
                         --micro-batch-size $MICRO_BATCH_SIZE \
                         --global-batch-size $GLOBAL_BATCH_SIZE \
@@ -102,11 +102,11 @@ elif [ $MODEL == "T5" ]; then
                 MODEL_ARGS="--encoder-num-layers $ENCODER_NUM_LAYERS\
                         --decoder-num-layers $DECODER_NUM_LAYERS\
                         --hidden-size $HIDDEN_SIZE \
-                        --num-attention-heads 12 \
-                        --kv-channels 64 \
+                        --num-attention-heads 32 \
+                        --kv-channels 128 \
                         --ffn-hidden-size 3072 \
                         --encoder-seq-length 512 \
-                        --decoder-seq-length 128 \
+                        --decoder-seq-length 512 \
                         --max-position-embeddings 512 \
                         --micro-batch-size $MICRO_BATCH_SIZE \
                         --global-batch-size $GLOBAL_BATCH_SIZE \
