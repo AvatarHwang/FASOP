@@ -14,7 +14,7 @@ def get_model_config(model_type:str, precision:int, heterogeneous:bool=True, par
                     "num_attention_heads": torch.tensor([16]).float(),
                     "type": "gpt2XL",
                     "precision":torch.tensor(precision).float()}
-        gbs = 256
+        gbs = 64
         exp_name = "gpt2"
     elif model_type == "bert":
         # for more information: https://catalog.ngc.nvidia.com/orgs/nvidia/models/megatron_bert_345m
@@ -25,7 +25,7 @@ def get_model_config(model_type:str, precision:int, heterogeneous:bool=True, par
                     "num_attention_heads": torch.tensor([16]).float(),
                     "type": "bert",
                     "precision":torch.tensor(precision).float()}
-        gbs = 64
+        gbs = 256
         exp_name = "bert"
     elif model_type == "T5":
         model_config = {"hidden_size": torch.tensor([1024]).float(), # also known as d_model
