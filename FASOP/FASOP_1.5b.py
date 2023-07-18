@@ -34,12 +34,12 @@ args = parser.parse_args()
 
 if args.pareto and args.gpu_per_node ==4 :
     print("Pareto experiments should use 8 GPUs per node")
-    print("would you like to continue? (y/n)")
+    print("would you like to use args.gpu_per_node 8? (y/n)")
     ans = input()
-    if ans == 'n':
-        exit()
     if ans == 'y':
         args.gpu_per_node = 8
+    else:
+        print("gpu per node is 4")
 
 time_s = time.time()
 # number of GPU per node, number of nodes

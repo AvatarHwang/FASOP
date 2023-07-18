@@ -38,7 +38,7 @@ class Stage:
         return self.comm_time+self.comp_time
 
 
-def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_node, gpu_per_node, node_type):
+def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_node, gpu_per_node, gpu_type_lst):
 
     num_balanced_layer = num_layer // pp_degree
     partition = []
@@ -51,7 +51,7 @@ def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_node, gpu_per_nod
     last_max_latency = 1000000
     counted = False
     while(1):
-        stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, num_node, gpu_per_node, gpu_per_node*num_node, pp_degree, node_type)
+        stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
         stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
 
         max_latency = max(stage_time_lst)
@@ -60,7 +60,7 @@ def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_node, gpu_per_nod
             if counted:
                 partition[max_latency_index] += 1
                 partition[min_latency_index] -= 1
-                stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, num_node, gpu_per_node, gpu_per_node*num_node, pp_degree, node_type)
+                stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
             break
         last_max_latency = max_latency
         max_latency_index = stage_time_lst.index(max_latency)
@@ -87,7 +87,7 @@ def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_node, gpu_per_nod
     return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
 
 
-def get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, num_node, gpu_per_node, world_size, pp_degree, node_type):
+def get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, gpu_type_lst):
     
     num_bw_share = 1 # which should be caculated in get_cost_c considering PCIe
     num_stage = len(partition)
@@ -96,8 +96,8 @@ def get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, num_node, gpu_
 
     if num_stage==1:
         cost_e = cost_e_a100
-        for i in range(num_node):
-            if node_type[i] == 'g5.12xlarge' or node_type[i] == 'g5.24xlarge':
+        for i in range(len(gpu_type_lst)):
+            if gpu_type_lst[i] == 'A10':
                 stage_latency[0].set_comp_time(sum(cost_e_a10))
                 return stage_latency
         stage_latency[0].set_comp_time(sum(cost_e_a100))
@@ -106,29 +106,13 @@ def get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, num_node, gpu_
     for stage in range(num_stage):
         num_layer_til_last_stage = sum(partition[:stage])
         num_layer_til_cur_stage = sum(partition[:stage+1])
-        if num_stage<num_node:
-            cost_e = cost_e_a100
-            stage_per_node = num_node/num_stage
-            for node_idx in range(int(stage_per_node*stage), int(stage_per_node*(stage+1))):
-                if node_type[node_idx] == 'g5.12xlarge' or node_type[node_idx] == 'g5.24xlarge':
-                    cost_e=cost_e_a10
-        elif num_stage>num_node:
-            node_per_pp = pp_degree/num_node
-            node_idx = int(stage//node_per_pp)
-            if node_type[node_idx] == 'p4d.24xlarge':
-                cost_e=cost_e_a100
-            elif node_type[node_idx] == 'g5.12xlarge' or node_type[node_idx] == 'g5.24xlarge':
-                cost_e=cost_e_a10
-            else:
-                assert False, "node type is not recognized"
+        node_idx = stage
+        if gpu_type_lst[node_idx] == 'A100':
+            cost_e=cost_e_a100
+        elif gpu_type_lst[node_idx] == 'A10':
+            cost_e=cost_e_a10
         else:
-            node_idx = stage
-            if node_type[node_idx] == 'p4d.24xlarge':
-                cost_e=cost_e_a100
-            elif node_type[node_idx] == 'g5.12xlarge' or node_type[node_idx] == 'g5.24xlarge':
-                cost_e=cost_e_a10
-            else:
-                assert False, "node type is not recognized"
+            assert False, "gpu type is not recognized"
 
         if stage == 0:
             stage_latency[stage].set_comp_time(sum(cost_e[:partition[0]]))
