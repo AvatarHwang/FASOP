@@ -8,7 +8,7 @@ MASTER_ADDR=$2
 . _00_conf.sh
 
 # copy data indexmap from nfs mount dir to local dir
-#cp -r /root/indexmap/* /root/Megatron-LM
+cp -r /root/indexmap/* /root/Megatron-LM
 
 echo "NODE_RANK: $NODE_RANK"
 echo "MASTER_ADDR: $MASTER_ADDR"
