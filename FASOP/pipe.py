@@ -38,7 +38,7 @@ class Stage:
         return self.comm_time+self.comp_time
 
 
-def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, num_node, gpu_per_node, gpu_type_lst):
+def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst):
 
     num_balanced_layer = num_layer // pp_degree
     partition = []
@@ -96,12 +96,14 @@ def get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, gpu_type_lst):
 
     if num_stage==1:
         cost_e = cost_e_a100
-        for i in range(len(gpu_type_lst)):
-            if gpu_type_lst[i] == 'A10':
-                stage_latency[0].set_comp_time(sum(cost_e_a10))
-                return stage_latency
-        stage_latency[0].set_comp_time(sum(cost_e_a100))
-        return stage_latency
+        if gpu_type_lst[0] == 'A10':
+            stage_latency[0].set_comp_time(sum(cost_e_a10))
+            return stage_latency
+        elif gpu_type_lst[0] == 'A100':
+            stage_latency[0].set_comp_time(sum(cost_e_a100))
+            return stage_latency
+        else:
+            assert False, "gpu type is not recognized"
     
     for stage in range(num_stage):
         num_layer_til_last_stage = sum(partition[:stage])

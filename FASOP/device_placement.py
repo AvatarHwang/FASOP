@@ -7,11 +7,12 @@ def get_gpu_for_stage(pp, N, node_type):
         gpu_for_stage = []
         for stage in range(pp):
             if pp < N:
-                gpu_for_stage.append('A100')
                 stage_per_node = N/pp
+                gpu = 'A100'
                 for node_idx in range(int(stage_per_node*stage), int(stage_per_node*(stage+1))):
                     if node_type[node_idx] == 'g5.12xlarge' or node_type[node_idx] == 'g5.24xlarge':
-                        gpu_for_stage.append('A10')
+                        gpu = 'A10'
+                gpu_for_stage.append(gpu)
             elif pp > N:
                 node_per_pp = pp/N
                 node_idx = int(stage//node_per_pp)
