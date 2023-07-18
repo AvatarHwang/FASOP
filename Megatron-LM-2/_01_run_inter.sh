@@ -8,7 +8,7 @@ MASTER_ADDR=$2
 . _00_conf.sh
 
 # copy data indexmap from nfs mount dir to local dir
-cp -r /root/indexmap/* /root/Megatron-LM
+#cp -r /root/indexmap/* /root/Megatron-LM
 
 echo "NODE_RANK: $NODE_RANK"
 echo "MASTER_ADDR: $MASTER_ADDR"
@@ -26,12 +26,6 @@ echo "NUM_LAYERS: $NUM_LAYERS"
 echo "PROFILE: $PROFILE"
 echo "PROFILE_ARGS: $PROFILE_ARGS"
 
-# pip install nltk
-# if [ $MODEL == "bert" ]; then
-#         python tools/preprocess_data.py --input AA/wiki_00 --output-prefix my-bert --vocab-file bert-large-uncased-vocab.txt --tokenizer-type BertWordPieceLowerCase --split-sentences --workers 1 --chunk-size 1
-# elif [ $MODEL == "T5" ]; then
-#         python tools/preprocess_data.py --input AA/wiki_00 --output-prefix my-t5 --vocab-file bert-large-uncased-vocab.txt --tokenizer-type BertWordPieceLowerCase --split-sentences --workers 1 --chunk-size 1
-# fi
 
 DISTRIBUTED_ARGS="--nproc_per_node $NPROC_PER_NODE \
                   --nnodes $NNODES \
@@ -65,10 +59,26 @@ if [ $MODEL == "gpt2" ]; then
         --fp16 \
         --balance $PARTITION" 
 
-elif [ $MODEL == "bert" ]; then
+elif [ $MODEL == "Bert" ]; then
         DATA_PATH=/root/Megatron-LM/my-bert_text_sentence
         VOCAB_FILE=bert-large-uncased-vocab.txt
-        MERGE_FILE=--
+        MERGE_FILE=bert-merges.txt
+        MODEL_ARGS="--num-layers $NUM_LAYERS \
+        --hidden-size $HIDDEN_SIZE \
+        --num-attention-heads 16 \
+        --seq-length 512 \
+        --max-position-embeddings 512 \
+        --micro-batch-size $MICRO_BATCH_SIZE \
+        --global-batch-size $GLOBAL_BATCH_SIZE \
+        --lr 0.00015 \
+        --train-iters 50 \
+        --lr-decay-iters 320000 \
+        --lr-decay-style cosine \
+        --vocab-file $VOCAB_FILE \
+        --merge-file $MERGE_FILE \
+        --lr-warmup-fraction .01 \
+        --fp16 \
+        --balance $PARTITION" 
 elif [ $MODEL == "T5" ]; then
         DATA_PATH=/root/Megatron-LM/my-t5_text_sentence
         VOCAB_FILE=bert-large-uncased-vocab.txt
@@ -97,7 +107,8 @@ elif [ $MODEL == "T5" ]; then
                         --fp16 \
                         --vocab-extra-ids 100 \
                         --vocab-file $VOCAB_FILE \
-                        --merge-file $MERGE_FILE "
+                        --merge-file $MERGE_FILE \
+                        --balance $PARTITION"
         else
                 MODEL_ARGS="--encoder-num-layers $ENCODER_NUM_LAYERS\
                         --decoder-num-layers $DECODER_NUM_LAYERS\
@@ -142,9 +153,9 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS _00_pretrain_gpt.py \
                 --split 100,0,0 
 EOF
 )
-elif [ $MODEL == "bert" ]; then
+elif [ $MODEL == "Bert" ]; then
         RUN_TORCH_SCRIPT=$(cat << EOF
-python -m torch.distributed.launch $DISTRIBUTED_ARGS _00_pretrain_gpt.py \
+python -m torch.distributed.launch $DISTRIBUTED_ARGS pretrain_bert.py \
                 $MODEL_ARGS \
                 $OUTPUT_ARGS \
                 --data-path $DATA_PATH \

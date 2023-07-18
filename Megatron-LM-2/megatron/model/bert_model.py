@@ -2,6 +2,8 @@
 
 """BERT model."""
 
+import time
+
 import torch
 
 from megatron import get_args
@@ -93,6 +95,8 @@ def post_language_model_processing(lm_output, pooled_output,
                                    lm_labels,
                                    logit_weights,
                                    fp16_lm_cross_entropy):
+    torch.cuda.synchronize()
+    start_time = time.time()
     # Output.
     lm_logits = lm_head(
         lm_output, logit_weights)
@@ -116,6 +120,9 @@ def post_language_model_processing(lm_output, pooled_output,
                                                         lm_labels)
         # [s, b] => [b s]
         lm_loss = lm_loss.transpose(0,1).contiguous()
+        torch.cuda.synchronize()
+        if torch.distributed.get_rank() == 0:
+            print('output embedding time: {}'.format(time.time() - start_time))
         return lm_loss, binary_logits
 
 

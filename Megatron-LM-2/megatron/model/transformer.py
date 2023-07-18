@@ -832,10 +832,10 @@ def _get_num_layers(args, is_encoder_and_decoder_model, is_decoder=False):
                 args.pipeline_model_parallel_split_rank
             )
             num_ranks_in_decoder = args.transformer_pipeline_model_parallel_size - num_ranks_in_encoder
-            assert args.encoder_num_layers % num_ranks_in_encoder == 0, \
-                    'encoder_num_layers (%d) must be divisible by number of ranks given to encoder (%d)' % (args.encoder_num_layers, num_ranks_in_encoder)
-            assert args.decoder_num_layers % num_ranks_in_decoder == 0, \
-                    'decoder_num_layers (%d) must be divisible by number of ranks given to decoder (%d)' % (args.decoder_num_layers, num_ranks_in_decoder)
+            # assert args.encoder_num_layers % num_ranks_in_encoder == 0, \
+            #         'encoder_num_layers (%d) must be divisible by number of ranks given to encoder (%d)' % (args.encoder_num_layers, num_ranks_in_encoder)
+            # assert args.decoder_num_layers % num_ranks_in_decoder == 0, \
+            #         'decoder_num_layers (%d) must be divisible by number of ranks given to decoder (%d)' % (args.decoder_num_layers, num_ranks_in_decoder)
             if mpu.is_pipeline_stage_before_split():
                 if args.balance :
                     balance=args.balance.split("-")
@@ -1016,11 +1016,19 @@ class ParallelTransformer(MegatronModule):
             if args.model_type == ModelType.encoder_and_decoder and \
                     mpu.get_pipeline_model_parallel_world_size() > 1:
                 pipeline_rank = mpu.get_pipeline_model_parallel_rank()
-                if layer_type == LayerType.encoder:
-                    offset = pipeline_rank * self.num_layers
+                if args.balance:
+                    balance = args.balance.split("-")
+                    if layer_type == LayerType.encoder:
+                        offset = sum(balance[:pipeline_rank])
+                    else:
+                        num_ranks_in_enc = args.pipeline_model_parallel_split_rank
+                        offset = sum(balance[num_ranks_in_enc:pipeline_rank])
                 else:
-                    num_ranks_in_enc = args.pipeline_model_parallel_split_rank
-                    offset = (pipeline_rank - num_ranks_in_enc) * self.num_layers
+                    if layer_type == LayerType.encoder:
+                        offset = pipeline_rank * self.num_layers
+                    else:
+                        num_ranks_in_enc = args.pipeline_model_parallel_split_rank
+                        offset = (pipeline_rank - num_ranks_in_enc) * self.num_layers
             else:
                 if args.balance:
                     offset = 0

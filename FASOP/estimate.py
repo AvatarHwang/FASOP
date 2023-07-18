@@ -116,7 +116,7 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
     return cost_c.values, _layer
 
 # execution cost for one layer, return shape (L,)
-def get_cost_e(cluster_info, model_config, parallel_config, profile_cost, _layer=None):    
+def get_cost_e(cluster_info, model_config, parallel_config, profile_cost, _layer=None, model_type=None):    
     n = model_config["num_layers"]
     bs = parallel_config["micro_bs"]
     mp = parallel_config["mp"]
@@ -133,16 +133,50 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost, _layer
         # cost_e in the main result is equivalent to using profile_cost.
         for layer_id in range(_num_layer):
             layer_type = _layer[layer_id]
-            if layer_type == "embedding_layer" or layer_type == "post_process":
-                if cluster_info[0][1] == torch.tensor([122 * 1e9]):
+            if model_type == "gpt2XL":
+                if layer_type == "embedding_layer" or layer_type == "post_process":
+                    if cluster_info[0][1] == torch.tensor([122 * 1e9]):
+                        cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
+                    else:
+                        cur_layer = profile_cost[str(int(mp.item()))][layer_id]
+                elif layer_type == "transformer_layer":
                     cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
                 else:
-                    cur_layer = profile_cost[str(int(mp.item()))][layer_id]
-            elif layer_type == "transformer_layer":
-                cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
-            else:
-                cur_layer = 0
-            cost_e[i][layer_id] = cur_layer
+                    cur_layer = 0
+                cost_e[i][layer_id] = cur_layer
+            elif model_type == "Bert":
+                if layer_type == "embedding_layer" or layer_type == "transformer_layer":
+                    if bs < 4:
+                        cur_layer = profile_cost[str(int(mp.item()))][layer_id]
+                    elif bs == 4:
+                        cur_layer = 1.2 * profile_cost[str(int(mp.item()))][layer_id]
+                    else:
+                        cur_layer = 1.2 * bs/4 * profile_cost[str(int(mp.item()))][layer_id]
+                else: # output embedding
+                    cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
+            elif model_type == "T5":
+                if layer_type == "transformer_layer":
+                    if bs ==1:
+                        cur_layer = profile_cost[str(int(mp.item()))][layer_id]
+                    elif bs == 2:
+                        cur_layer = 1.1 * profile_cost[str(int(mp.item()))][layer_id]
+                    elif bs == 4:
+                        cur_layer = 1.1*1.8*profile_cost[str(int(mp.item()))][layer_id]
+                    else:
+                        cur_layer = 1.1*1.8*bs/4 * profile_cost[str(int(mp.item()))][layer_id]
+                elif layer_type == "embedding_layer":
+                    if bs ==1:
+                        cur_layer = profile_cost[str(int(mp.item()))][layer_id]
+                    elif bs == 2:
+                        cur_layer = 1.2 * profile_cost[str(int(mp.item()))][layer_id]
+                    elif bs == 4:
+                        cur_layer = 1.2 * 1.2 * profile_cost[str(int(mp.item()))][layer_id]
+                    elif bs == 8:
+                        cur_layer = 1.2 * 1.2 * 1.4 * profile_cost[str(int(mp.item()))][layer_id]
+                    else:
+                        cur_layer = 1.2 * 1.2 * 1.4 * bs/8 * profile_cost[str(int(mp.item()))][layer_id]
+
+
     
     cost_e = torch.from_numpy(np.stack(cost_e, axis=0))            
     cost_e = torch.mean(cost_e, dim=0)
@@ -304,9 +338,9 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     _layer = get_layer_type(model_type=model_type, n=L, pp=pp_degree)
 
     cost_e_a100 = get_cost_e(cluster_info=cluster_info, 
-                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a100"], _layer=_layer)
+                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a100"], _layer=_layer, model_type=model_type)
     cost_e_a10 = get_cost_e(cluster_info=cluster_info, 
-                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a10"], _layer=_layer)
+                        model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a10"], _layer=_layer, model_type=model_type)
     cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config, _layer=_layer)
         

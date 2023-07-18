@@ -53,7 +53,7 @@ if not os.path.exists(dir_path):
 
 cluster_info = {} # a100:4 : a10:28    8 x nodes
 
-A100 = [torch.tensor([40 * 1e9]).float(), torch.tensor([4800 * 1e9]).float()]
+A100 = [torch.tensor([40 * 1e9]).float(), torch.tensor([1840 * 1e9]).float()]
 A10 = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
 cluster_combinations = get_all_cluster_combinations(args.type, args.pareto, args.heterogeneous)
@@ -83,22 +83,16 @@ for cluster_info in cluster_combinations:
     for d in D:
         print(d)
         node_type = []
-        if n_a100>0:
-            for i in range(num_node):
-                if d[i] == 1:
-                    node_type.append('p4d.24xlarge')
-                    n_a100+=1
-                else:
-                    node_type.append('g5.24xlarge')
-            for i in range(len(d)):
-                if d[i] == 0:
-                    d[i] = A10
-                else:
-                    d[i] = A100
-        else:
-            for i in range(num_node):
+        for i in range(len(d)):
+            if d[i] == 'A':
+                node_type.append('p4d.24xlarge')
+                n_a100+=1
+                d[i] = A100
+                
+            else:
                 node_type.append('g5.24xlarge')
                 d[i] = A10
+
         model = FASOP(model_config, exp_name, A100, A10, len(cluster_info))
                
         known = None
@@ -120,7 +114,7 @@ for cluster_info in cluster_combinations:
                 for k in parallel_dim:
                     parallel_dim[k] = int(parallel_dim[k].item())
 
-                if d[0][1] == torch.tensor([4800 * 1e9]).float():
+                if d[0][1] == torch.tensor([1840 * 1e9]).float():
                     price_per_s_1 = 32.7726 / 3600
                 else:
                     price_per_s_1 = 5.672 / 3600
