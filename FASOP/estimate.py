@@ -86,7 +86,7 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
     last_volume = torch.zeros(1,)
     for i in range(_num_layer):
         layer_type = _layer[i]
-        if layer_type == "embedding_layer" or layer_type == "transformer_layer":
+        if layer_type == "embedding_layer" or layer_type == "transformer_layer" or layer_type == "encoder" or layer_type == "decoder":
             last_volume = bs * s * h
             layer_volume.append(last_volume)
         else:
@@ -448,7 +448,6 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     num_mb = gbs / (dp_degree * mbs)
             
     parallel_config = {"mp" : tp_degree, "dp" : dp_degree, "pp" : pp_degree, "micro_bs" : mbs, "rank_map" : rank_map, "rank_node_map": rank_node_map}
-    
     pp_degree = int(pp_degree.item())
     _layer = get_layer_type(model_type=model_type, n=L, pp=pp_degree)
 
@@ -461,13 +460,16 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
         
     if "T5" not in model_type:
         gpu_type_lst = get_gpu_for_stage(pp_degree, N, node_type)
-        partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, len(gpu_type_lst), M, gpu_type_lst)
+
+        partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, gpu_type_lst)
         pipecost_last, stage_wise_cost_lst = schedule(pp_degree, 
                                                     num_mb, stage_comp_time_lst, 
                                                     stage_for_send_time_lst, 
                                                     stage_back_send_time_lst)
+        if dp_degree==16:
+            print(f"stage_wise_cost_lst: {stage_wise_cost_lst}")
         is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
-    else:
+    else: # If the model is T5
         # get gpu type for each stage
         gpu_type_lst = get_gpu_for_stage(pp_degree, N, node_type)
 
@@ -485,14 +487,12 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                                                     np.asarray(cost_e_a10), 
                                                     np.asarray(cost_c), 
                                                     pp_en, 
-                                                    pp_en, M, 
                                                     gpu_type_lst[:pp_en])
                 partition_de, stage_comp_time_lst_de, _, _, stage_for_send_time_lst_de, stage_back_send_time_lst_de = minmax(int(len(cost_e_a100)/2),
                                                     np.asarray(cost_e_a100), 
                                                     np.asarray(cost_e_a10), 
                                                     np.asarray(cost_c), 
                                                     pp_de,
-                                                    pp_de, M, 
                                                     gpu_type_lst[pp_en:])
                 
                 partition_temp = partition_en + partition_de
@@ -565,7 +565,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
             if layer_type[i] == "embedding_layer" :
                 param_count += h * v
                 activation += 0
-            elif layer_type[i] == "transformer_layer":
+            elif layer_type[i] == "transformer_layer" or layer_type[i] == "encoder" or layer_type[i] == "decoder":
                 param_count += 12 * h ** 2
                 activation += ( (s * b * h) * (34 + 5 * (a * s) / h) ) / tp # tensor + sequence 
                 # if i == 0:
@@ -632,6 +632,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     # print(f"is zerooom_gpumem: {zerooom_gpumem}")
                 
     return oom, oom_gpumem, oom_zero, zerooom_gpumem
+
 
 def get_layer_type(model_type, n, pp):
     _layer = ["embedding_layer"]
