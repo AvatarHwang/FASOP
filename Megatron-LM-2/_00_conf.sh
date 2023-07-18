@@ -5,20 +5,21 @@ CONTAINER_PATH="/scratch/enroot/$UID/data/megatron-latest"
 CONTAINER_NAME="megatron-latest"
 
 HOMOGENEOUS_CLUSTER=true
-MODEL="T5" # Bert / gpt / T5
+MODEL="Bert" # Bert / gpt / T5
 NPROC_PER_NODE=4
 NNODES=4
 WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
-GLOBAL_BATCH_SIZE=128
-MICRO_BATCH_SIZE=128
+GLOBAL_BATCH_SIZE=16
+MICRO_BATCH_SIZE=1
 TENSOR_MP_SIZE=2
-DP_SIZE=1
-PIPELINE_MP_SIZE=8
-PARTITION="3-4-4-4-4-5-11-13"
+DP_SIZE=4
+PIPELINE_MP_SIZE=2
+PARTITION="11-13"
 NSYS=false
 PROFILE=false 
-MASTER_PORT=6778
+MASTER_PORT=6000
 RELOAD_CONTAINER=false
+ZERO=false
 
 PIPELINE_MODEL_PARALLEL_SPLIT_RANK=6 # Where the encoder ends within the pipeline group
 
@@ -26,7 +27,7 @@ PIPELINE_MODEL_PARALLEL_SPLIT_RANK=6 # Where the encoder ends within the pipelin
 echo "MODEL : $MODEL"
 if [ $MODEL == "Bert" ]; then
         HIDDEN_SIZE=1024
-        NUM_LAYERS=1
+        NUM_LAYERS=24
 elif [ $MODEL == "GPT" ]; then
         HIDDEN_SIZE=1600
         NUM_LAYERS=48
@@ -48,4 +49,13 @@ if $PROFILE; then
 else
         echo "Not profiling"
         PROFILE_ARGS=""
+fi
+
+# set zero arguments
+if $ZERO; then
+        echo "ZERO ON"
+        ZERO_ARGS="--use-distributed-optimizer"
+else
+        echo "ZERO OFF"
+        ZERO_ARGS=""
 fi
