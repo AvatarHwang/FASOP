@@ -53,11 +53,7 @@ if not os.path.exists(dir_path):
 
 cluster_info = {} # a100:4 : a10:28    8 x nodes
 
-<<<<<<< HEAD
 A100 = [torch.tensor([40 * 1e9]).float(), torch.tensor([1840 * 1e9]).float()]
-=======
-A100 = [torch.tensor([40 * 1e9]).float(), torch.tensor([230 * 8 * 1e9]).float()] # HGX NVLink 600GB/s -> 230 GB/s
->>>>>>> b119b20c59f2558fa0b3bf273525e289b00721a0
 A10 = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
 cluster_combinations = get_all_cluster_combinations(args.type, args.pareto, args.heterogeneous)
@@ -73,8 +69,6 @@ for cluster_info in cluster_combinations:
     n_a10 = num_node - n_a100
 
     D = device_placement(n_a100, n_a10)
-    print(f"type D {type(D)}")
-    
     if args.pareto is False and args.heterogeneous is True:
         assert len(D) != 1, "Stochastic bug: try to run the code few more times!"
 
