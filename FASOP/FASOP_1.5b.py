@@ -89,9 +89,11 @@ for cluster_info in cluster_combinations:
                 n_a100+=1
                 d[i] = A100
                 
-            else:
+            elif d[i] == 'B':
                 node_type.append('g5.24xlarge')
                 d[i] = A10
+            else:
+                assert False, "Unknown node type"
 
         model = FASOP(model_config, exp_name, A100, A10, len(cluster_info))
                
