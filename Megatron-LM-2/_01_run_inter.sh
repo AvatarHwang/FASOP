@@ -36,7 +36,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $NPROC_PER_NODE \
 OUTPUT_ARGS="--log-interval 10 \
               --save-interval 100 \
               --eval-interval 100 \
-              --eval-iters 10 $PROFILE_ARGS"
+              --eval-iters 10 $PROFILE_ARGS $ZERO_ARGS"
 
 if [ $MODEL == "gpt2" ]; then
         DATA_PATH=/root/Megatron-LM/my-gpt2_text_document
@@ -79,6 +79,7 @@ elif [ $MODEL == "Bert" ]; then
         --lr-warmup-fraction .01 \
         --fp16 \
         --balance $PARTITION" 
+
 elif [ $MODEL == "T5" ]; then
         DATA_PATH=/root/Megatron-LM/my-t5_text_sentence
         VOCAB_FILE=bert-large-uncased-vocab.txt
