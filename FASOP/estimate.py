@@ -352,14 +352,15 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     assert len(ds_partition) == pp + 1
 
     counted = False
+    
     param_count = 0    
     for layer_id in range(ds_partition[0], ds_partition[1]):
         layer_type = _layer[layer_id]
-        if layer_type == "embedding_layer":
+        if layer_type == "embedding_layer" or layer_type == "post_process":
             if not counted:
                 counted = True
                 param_count += (h*v)
-        elif layer_type == "transformer_layer":
+        elif layer_type == "transformer_layer" or layer_type == "encoder" or layer_type == "decoder":
             param_count += ((12 * h ** 2)+20800) / mp
     
     # Get communication bandwidth of pipeline stage 0
