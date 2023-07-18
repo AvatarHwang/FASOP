@@ -5,22 +5,22 @@ CONTAINER_PATH="/scratch/enroot/$UID/data/megatron-latest"
 CONTAINER_NAME="megatron-latest"
 
 HOMOGENEOUS_CLUSTER=true
-MODEL="T5" # Bert / GPT / T5
-NPROC_PER_NODE=1
-NNODES=1
+MODEL="T5" # Bert / gpt / T5
+NPROC_PER_NODE=4
+NNODES=4
 WORLD_SIZE=$((NPROC_PER_NODE * NNODES))
-GLOBAL_BATCH_SIZE=2
-MICRO_BATCH_SIZE=2
-TENSOR_MP_SIZE=1
+GLOBAL_BATCH_SIZE=128
+MICRO_BATCH_SIZE=128
+TENSOR_MP_SIZE=2
 DP_SIZE=1
-PIPELINE_MP_SIZE=1
-PARTITION="13-12-13-12"
+PIPELINE_MP_SIZE=8
+PARTITION="3-4-4-4-4-5-11-13"
 NSYS=false
-PROFILE=true 
+PROFILE=false 
 MASTER_PORT=6778
 RELOAD_CONTAINER=false
 
-PIPELINE_MODEL_PARALLEL_SPLIT_RANK=2 # Where the encoder ends within the pipeline group
+PIPELINE_MODEL_PARALLEL_SPLIT_RANK=6 # Where the encoder ends within the pipeline group
 
 # set model specific arguments
 echo "MODEL : $MODEL"
@@ -31,7 +31,7 @@ elif [ $MODEL == "GPT" ]; then
         HIDDEN_SIZE=1600
         NUM_LAYERS=48
 elif [ $MODEL == "T5" ]; then
-        HIDDEN_SIZE=512
+        HIDDEN_SIZE=1024
         NUM_LAYERS=48
         ENCODER_NUM_LAYERS=$((NUM_LAYERS / 2))
         DECODER_NUM_LAYERS=$((NUM_LAYERS / 2))

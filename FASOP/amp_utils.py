@@ -43,7 +43,7 @@ def amp_no_placement_strategy(M, N, gbs, known, num_layers):
         known = defaultdict(list)
         ele_count = 0
         W = M * N
-        for h in factor(M): # mp
+        for h in factor(min(M, 4)): # mp, only max 4 is supported
             assert M*N % h == 0
             remain = M*N // h
             for w in factor(remain): # dp

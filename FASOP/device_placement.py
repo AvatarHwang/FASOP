@@ -57,27 +57,43 @@ def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneou
                         cluster_combinations.append(cluster)
                     num_c += 1
             print(f"Number of clusters combinations: {num_c}")
+            return cluster_combinations
     else:
         assert False, "Model type not supported"
 
 
 def device_placement(num_a100, num_a10):
-    a100_nodes = ''
-    a10_nodes = ''
+    a100_nodes = []
+    a10_nodes = []
     for i in range(num_a100):
-        a100_nodes += 'A'
+        a100_nodes.append('A')
     for i in range(num_a10):
-        a10_nodes += 'B'
+        a10_nodes.append('B')
 
     print(f"a100_nodes+a10_nodes: {a100_nodes+a10_nodes}")
 
     D = []
     count=0
-    for d in msp(a100_nodes+a10_nodes):
-        count += 1
-        D.append(d)
-    print(f"Number of node placement: {count}")
+    D = cyclic_permutation(a100_nodes+a10_nodes)
+    print(D)
+    #for d in msp(a100_nodes+a10_nodes):
+    #    count += 1
+    #    D.append(d)
     return D
+
+
+def cyclic_permutation(l):
+    """
+    Returns all cyclic permutations of the given list
+    """
+    permutations = []
+    count = 0
+    for i in range(len(l)):
+        permutations.append(l[i:] + l[:i])
+        count += 1
+    print(f"Number of node placement: {count}")
+    return permutations
+
 
 def msp(items):
   '''Yield the permutations of `items` where items is either a list
