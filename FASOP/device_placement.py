@@ -1,5 +1,34 @@
 
 
+def get_gpu_for_stage(pp, N, node_type):
+    if pp == 1:
+        return ['A10']
+    else:
+        gpu_for_stage = []
+        for stage in range(pp):
+            if pp < N:
+                gpu_for_stage.append('A100')
+                stage_per_node = N/pp
+                for node_idx in range(int(stage_per_node*stage), int(stage_per_node*(stage+1))):
+                    if node_type[node_idx] == 'g5.12xlarge' or node_type[node_idx] == 'g5.24xlarge':
+                        gpu_for_stage.append('A10')
+            elif pp > N:
+                node_per_pp = pp/N
+                node_idx = int(stage//node_per_pp)
+                if node_type[node_idx] == 'p4d.24xlarge':
+                    gpu_for_stage.append('A100')
+                elif node_type[node_idx] == 'g5.12xlarge' or node_type[node_idx] == 'g5.24xlarge':
+                    gpu_for_stage.append('A10')
+            else:
+                node_idx = stage
+                if node_type[node_idx] == 'p4d.24xlarge':
+                    gpu_for_stage.append('A100')
+                elif node_type[node_idx] == 'g5.12xlarge' or node_type[node_idx] == 'g5.24xlarge':
+                    gpu_for_stage.append('A10')
+    return gpu_for_stage
+                        
+
+
 def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneous=False):
     """
     Returns all possible cluster combinations for the given model type
@@ -30,7 +59,7 @@ def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneou
         cluster_combinations = [cluster_info]
         return cluster_combinations
     elif model_type == "T5":
-        if pareto!=True:
+        if pareto is False:
             if heterogeneous:
                 cluster_info[0] = '1'
                 for i in range(1, 8):
@@ -39,7 +68,7 @@ def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneou
                 return cluster_combinations
             else:
                 cluster_combinations = []
-                for i in range(4):
+                for i in range(8):
                     cluster_info[i] = '0'
                 cluster_combinations.append(cluster_info)        
                 return cluster_combinations
