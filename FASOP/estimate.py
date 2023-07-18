@@ -117,7 +117,7 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
     return cost_c.values, _layer
 
 # execution cost for one layer, return shape (L,)
-def get_cost_e(cluster_info, model_config, parallel_config, profile_cost, _layer=None, model_type=None):    
+def get_cost_e(is_a100, model_config, parallel_config, profile_cost, _layer=None, model_type=None):    
     n = model_config["num_layers"]
     bs = parallel_config["micro_bs"]
     mp = parallel_config["mp"]
@@ -140,7 +140,7 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost, _layer
             #################################################################
             if model_type == "gpt2XL":
                 if layer_type == "embedding_layer" or layer_type == "post_process":
-                    if cluster_info[0][1] == torch.tensor([252 * 1e9]):
+                    if is_a100 is False: # A10 GPU
                         cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
                     else:
                         cur_layer = profile_cost[str(int(mp.item()))][layer_id]
@@ -153,7 +153,7 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost, _layer
             #                        Bert
             #################################################################
             elif model_type == "bert":
-                if cluster_info[0][1] == torch.tensor([252 * 1e9]):
+                if is_a100 is False: # A10 GPU
                     if layer_type == "embedding_layer":
                         if bs < 4:
                             cur_layer = profile_cost[str(int(mp.item()))][layer_id]
@@ -201,7 +201,7 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost, _layer
             #################################################################
             elif model_type == "T5":
                 # A10 GPU
-                if cluster_info[0][1] == torch.tensor([252 * 1e9]):
+                if is_a100 is False: # A10 GPU
                     if layer_type == "encoder":
                         if bs == 1:
                             cur_layer = profile_cost[str(int(mp.item()))][layer_id]
@@ -451,13 +451,20 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     pp_degree = int(pp_degree.item())
     _layer = get_layer_type(model_type=model_type, n=L, pp=pp_degree)
 
-    cost_e_a100 = get_cost_e(cluster_info=cluster_info, 
+    cost_e_a100 = get_cost_e(is_a100=True, 
                         model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a100"], _layer=_layer, model_type=model_type)
-    cost_e_a10 = get_cost_e(cluster_info=cluster_info, 
+    if dp_degree==16 and mbs==16:
+        print(f"batch size: {mbs}")
+        print(f"sum of cost_e_a100 : {torch.sum(cost_e_a100)}")
+        print(f"cost_e_a100 : {cost_e_a100}")
+    cost_e_a10 = get_cost_e(is_a100=False, 
                         model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a10"], _layer=_layer, model_type=model_type)
+    if dp_degree==16 and mbs==16:
+        print(f"sum of cost_e_a10 : {torch.sum(cost_e_a10)}")
+        print(f"cost_e_a10 : {cost_e_a10}\n")
     cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config, _layer=_layer)
-        
+
     if "T5" not in model_type:
         gpu_type_lst = get_gpu_for_stage(pp_degree, N, node_type)
 
@@ -466,8 +473,6 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                                                     num_mb, stage_comp_time_lst, 
                                                     stage_for_send_time_lst, 
                                                     stage_back_send_time_lst)
-        if dp_degree==16:
-            print(f"stage_wise_cost_lst: {stage_wise_cost_lst}")
         is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
     else: # If the model is T5
         # get gpu type for each stage
