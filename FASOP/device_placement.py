@@ -74,8 +74,11 @@ def device_placement(num_a100, num_a10):
 
     D = []
     count=0
-    D = cyclic_permutation(a100_nodes+a10_nodes)
-    print(D)
+    if num_a100*num_a10==0:
+        return [a100_nodes+a10_nodes]
+    else:
+        D = cyclic_permutation(a100_nodes+a10_nodes)
+        print(D)
     #for d in msp(a100_nodes+a10_nodes):
     #    count += 1
     #    D.append(d)

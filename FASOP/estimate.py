@@ -135,7 +135,7 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost, _layer
             layer_type = _layer[layer_id]
             if model_type == "gpt2XL":
                 if layer_type == "embedding_layer" or layer_type == "post_process":
-                    if cluster_info[0][1] == torch.tensor([122 * 1e9]):
+                    if cluster_info[0][1] == torch.tensor([252 * 1e9]):
                         cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
                     else:
                         cur_layer = profile_cost[str(int(mp.item()))][layer_id]
@@ -145,16 +145,46 @@ def get_cost_e(cluster_info, model_config, parallel_config, profile_cost, _layer
                     cur_layer = 0
                 cost_e[i][layer_id] = cur_layer
             elif model_type == "Bert":
-                if layer_type == "embedding_layer" or layer_type == "transformer_layer":
-                    if bs < 4:
-                        cur_layer = profile_cost[str(int(mp.item()))][layer_id]
-                    elif bs == 4:
-                        cur_layer = 1.2 * profile_cost[str(int(mp.item()))][layer_id]
+                if cluster_info[0][1] == torch.tensor([252 * 1e9]):
+                    if layer_type == "embedding_layer":
+                        if bs < 4:
+                            cur_layer = profile_cost[str(int(mp.item()))][layer_id]
+                        else:
+                            cur_layer = bs/4 * profile_cost[str(int(mp.item()))][layer_id]
+                    elif layer_type == "transformer_layer":
+                        cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
+                    elif layer_type == "post_process":
+                        cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
                     else:
-                        cur_layer = 1.2 * bs/4 * profile_cost[str(int(mp.item()))][layer_id]
-                else: # output embedding
-                    cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
+                        assert False, "layer type not recognized"
+                else: # A100 GPU
+                    if layer_type == "embedding_layer":
+                        if bs < 8:
+                            cur_layer = profile_cost[str(int(mp.item()))][layer_id]
+                        elif bs==8:
+                            cur_layer = 0.000352693
+                        elif bs==16:
+                            cur_layer = 0.000560498
+                        elif bs==32:
+                            cur_layer = 0.000877118
+                        else:
+                            cur_layer = bs / 32.0 * 0.000877118
+                    elif layer_type == "transformer_layer":
+                        if bs < 8:
+                            cur_layer = profile_cost[str(int(mp.item()))][layer_id]
+                        elif bs==8:
+                            cur_layer = 0.0018003
+                        elif bs==16:
+                            cur_layer = 0.0029857
+                        else:
+                            cur_layer = bs / 16.0 * 0.0029857
+                    elif layer_type == "post_process":
+                        cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
+                    else:
+                        assert False, "layer type not recognized"
             elif model_type == "T5":
+                #TODO: convert below to profile_cost, not bs * profile_cost
+                assert False, "convert it to profile_cost, not bs * profile_cost"
                 if layer_type == "transformer_layer":
                     if bs ==1:
                         cur_layer = profile_cost[str(int(mp.item()))][layer_id]
@@ -352,24 +382,20 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                                                     stage_back_send_time_lst)
         is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
     else:
+        # get gpu type for each stage
+        # gpu_type = get_gput_type(model_type, layer_type, pp_degree)
+        num_node_en=1 #for debug
+        num_node_de=1#for debug
+
         if pp_degree>1:
             PP_C = []
             for pp_encoder in range(1, min(pp_degree, len(cost_e_a100))):
                 pp_decoder = pp_degree - pp_encoder
                 if pp_decoder <= L/2:
                     PP_C.append([pp_encoder, pp_decoder])
-            
             pipecost_last = 1000000
             for pp_c in PP_C:
-                pp_en, pp_de = pp_c
-                if pp_degree>=N:
-                    num_node_en = int(pp_en / (pp_degree//N))
-                    num_node_de = int(pp_de / (pp_degree//N))
-                    if num_node_en == 0 or num_node_de == 0:
-                        continue
-                else:
-                    num_node_en = int(pp_en * (N / pp_degree))
-                    num_node_de = int(pp_de * (N / pp_degree))
+                pp_en, pp_de = pp_c                
                 partition_en, stage_comp_time_lst_en, _, _, stage_for_send_time_lst_en, stage_back_send_time_lst_en = minmax(int(len(cost_e_a100)/2), 
                                                     np.asarray(cost_e_a100), 
                                                     np.asarray(cost_e_a10), 
@@ -444,7 +470,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     dp = parallel_config["dp"]
     b = parallel_config["micro_bs"]
     N = len(cluster_info)
-    print(f"h: {h} v: {v} s: {s} a: {a} tp: {tp} dp: {dp} b: {b} N: {N}")
+    #print(f"h: {h} v: {v} s: {s} a: {a} tp: {tp} dp: {dp} b: {b} N: {N}")
     memory = []
     memory_zero = []
     for stage in partition:
@@ -464,7 +490,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
                 pass
         major = param_count * 18
         major_zero = param_count * (6 + int(12 / dp))
-        print(f"major: {major} major_zero: {major_zero}")
+        #print(f"major: {major} major_zero: {major_zero}")
         memory.append((major + activation) / 1024 /1024 /1024)
         memory_zero.append((major_zero + activation) / 1024 / 1024 /1024)
     
@@ -477,10 +503,10 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     oom_gpumem = max(memory)
     zerooom_gpumem = max(memory_zero)
     # debug    
-    print(f"partition size: {len(partition)}, \n partition: {partition}")
+    #print(f"partition size: {len(partition)}, \n partition: {partition}")
     # print(f"cluster size: {len(cluster_info)}, \n cluster_info: {cluster_info}")
-    print(f"memory size: {len(memory)}, oom_gpumem: {oom_gpumem}, \n {memory}")
-    print(f"memory zero size: {len(memory_zero)}, zerooom_gpumem: {zerooom_gpumem}, \n {memory_zero}")
+    #print(f"memory size: {len(memory)}, oom_gpumem: {oom_gpumem}, \n {memory}")
+    #print(f"memory zero size: {len(memory_zero)}, zerooom_gpumem: {zerooom_gpumem}, \n {memory_zero}")
     
     for i in range(len(partition)):
         if len(partition) > N:
@@ -528,10 +554,7 @@ def get_layer_type(model_type, n, pp):
     if model_type != "T5":
         for i in range(n):
             _layer.append("transformer_layer")
-        if pp > 1:
-            _layer.append("embedding_layer")
-        else:
-            _layer.append("None")
+        _layer.append("post_process")
     else:
         for i in range(int(n/2)):
             _layer.append("transformer_layer")

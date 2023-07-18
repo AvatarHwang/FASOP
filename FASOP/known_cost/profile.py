@@ -1,5 +1,19 @@
 import numpy as np
 
+#
+#TTTTTTTTTTTTTTTTTTTTTTTT    5555555555555555555555555555555555
+#           T                5
+#           T                5
+#           T                5
+#           T                5
+#           T                5
+#           T                5
+#           T                555555555555555555555555555555555
+#           T                                                5
+#           T                                                5
+#           T                                                5
+#           T                555555555555555555555555555555555
+
 input_embedding_time=0.000212169
 encoder_time=0.001450825
 post_process_time=1.67131E-05
@@ -118,4 +132,79 @@ data_4[-1] += decoder_post_process_time
 np.save('/home1/soonyear/tdpp/FASOP/known_cost/T5_A100_1.npy', data_1)
 np.save('/home1/soonyear/tdpp/FASOP/known_cost/T5_A100_2.npy', data_2)
 np.save('/home1/soonyear/tdpp/FASOP/known_cost/T5_A100_4.npy', data_4)
+
+
+#############
+#Bert
+#############
+
+input_embedding_time=0.000229263
+encoder_time=0.002081418
+post_process_time=0.00212672
+
+data_1 = []
+
+data_1.append(input_embedding_time)
+for i in range(24):
+    data_1.append(encoder_time)
+data_1.append(post_process_time)
+
+input_embedding_time=0.000499630
+encoder_time=0.001829433
+post_process_time=0.001205842
+
+data_2 = []
+data_2.append(input_embedding_time)
+for i in range(24):
+    data_2.append(encoder_time)
+data_2.append(post_process_time)
+
+input_embedding_time=0.000613117
+encoder_time=0.001926255
+post_process_time=0.000994603
+
+data_4 = []
+data_4.append(input_embedding_time)
+for i in range(24):
+    data_4.append(encoder_time)
+data_4.append(post_process_time)
+
+np.save('/home1/soonyear/tdpp/FASOP/known_cost/bert_A10_1.npy', data_1)
+np.save('/home1/soonyear/tdpp/FASOP/known_cost/bert_A10_2.npy', data_2)
+np.save('/home1/soonyear/tdpp/FASOP/known_cost/bert_A10_4.npy', data_4)
+
+input_embedding_time=0.000230861
+encoder_time=0.001443982
+post_process_time=0.001056433
+
+data_1 = []
+data_1.append(input_embedding_time)
+for i in range(24):
+    data_1.append(encoder_time)
+data_1.append(post_process_time)
+
+input_embedding_time=0.000458074
+encoder_time=0.001640034
+post_process_time=0.000849152
+
+data_2 = []
+data_2.append(input_embedding_time)
+for i in range(24):
+    data_2.append(encoder_time)
+data_2.append(post_process_time)
+
+input_embedding_time=0.000467277
+encoder_time=0.001612544
+post_process_time=0.000859308
+
+data_4 = []
+data_4.append(input_embedding_time)
+for i in range(24):
+    data_4.append(encoder_time)
+data_4.append(post_process_time)
+
+np.save('/home1/soonyear/tdpp/FASOP/known_cost/bert_A100_1.npy', data_1)
+np.save('/home1/soonyear/tdpp/FASOP/known_cost/bert_A100_2.npy', data_2)
+np.save('/home1/soonyear/tdpp/FASOP/known_cost/bert_A100_4.npy', data_4)
+
 
