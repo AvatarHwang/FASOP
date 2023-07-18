@@ -444,6 +444,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     dp = parallel_config["dp"]
     b = parallel_config["micro_bs"]
     N = len(cluster_info)
+    print(f"h: {h} v: {v} s: {s} a: {a} tp: {tp} dp: {dp} b: {b} N: {N}")
     memory = []
     memory_zero = []
     for stage in partition:
@@ -453,7 +454,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
         for i in range(stage):
             if layer_type[i] == "embedding_layer" :
                 param_count += h * v
-                activation = 0
+                activation += 0
             elif layer_type[i] == "transformer_layer":
                 param_count += 12 * h ** 2
                 activation += ( (s * b * h) * (34 + 5 * (a * s) / h) ) / tp # tensor + sequence 
@@ -463,7 +464,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
                 pass
         major = param_count * 18
         major_zero = param_count * (6 + int(12 / dp))
-        
+        print(f"major: {major} major_zero: {major_zero}")
         memory.append((major + activation) / 1024 /1024 /1024)
         memory_zero.append((major_zero + activation) / 1024 / 1024 /1024)
     
@@ -476,10 +477,10 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     oom_gpumem = max(memory)
     zerooom_gpumem = max(memory_zero)
     # debug    
-    # print(f"partition size: {len(partition)}, \n partition: {partition}")
+    print(f"partition size: {len(partition)}, \n partition: {partition}")
     # print(f"cluster size: {len(cluster_info)}, \n cluster_info: {cluster_info}")
-    # print(f"memory size: {len(memory)}, oom_gpumem: {oom_gpumem}, \n {memory}")
-    # print(f"memory zero size: {len(memory_zero)}, zerooom_gpumem: {zerooom_gpumem}, \n {memory_zero}")
+    print(f"memory size: {len(memory)}, oom_gpumem: {oom_gpumem}, \n {memory}")
+    print(f"memory zero size: {len(memory_zero)}, zerooom_gpumem: {zerooom_gpumem}, \n {memory_zero}")
     
     for i in range(len(partition)):
         if len(partition) > N:
