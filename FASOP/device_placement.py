@@ -2,7 +2,11 @@
 
 def get_gpu_for_stage(pp, N, node_type):
     if pp == 1:
-        return ['A10']
+        gpu = 'A100'
+        for node_idx in range(N):
+            if node_type[node_idx] == 'g5.12xlarge' or node_type[node_idx] == 'g5.24xlarge':
+                gpu = 'A10'
+        return [gpu]
     else:
         gpu_for_stage = []
         for stage in range(pp):
@@ -73,11 +77,11 @@ def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneou
                     cluster_info[i] = '0'
                 cluster_combinations.append(cluster_info)        
                 return cluster_combinations
-        else:
+        else: # pareto
             num_c = 0
             cluster_combinations = []
-            for num_a100 in range(1, 8+1):
-                for num_a10 in range(1, 8+1):
+            for num_a100 in range(0, 4+1):
+                for num_a10 in range(0, 4+1):
                     cluster = {}
                     for i in range(num_a100+num_a10):
                         cluster[i] = '0'
@@ -108,10 +112,36 @@ def device_placement(num_a100, num_a10):
         return [a100_nodes+a10_nodes]
     else:
         D = cyclic_permutation(a100_nodes+a10_nodes)
-        print(D)
-    #for d in msp(a100_nodes+a10_nodes):
-    #    count += 1
-    #    D.append(d)
+    return D
+
+
+def device_placement_all(num_a100, num_a10):
+    a100_nodes = ''
+    a10_nodes = ''
+    for i in range(num_a100):
+        a100_nodes += 'A'
+    for i in range(num_a10):
+        a10_nodes += 'B'
+
+    print(f"a100_nodes+a10_nodes: {a100_nodes+a10_nodes}")
+
+    D = []
+
+    if num_a100*num_a10==0:
+        d=[]
+        for i in a100_nodes+a10_nodes:
+            d.append(i)
+        D.append(d)
+        return D
+    else:
+        for d in msp(a100_nodes+a10_nodes):
+            de=[]
+            for i in d:
+                if i == 1:
+                    de.append('A')
+                else:
+                    de.append('B')
+            D.append(de)
     return D
 
 

@@ -17,7 +17,7 @@ import torch
 
 from amp_utils import amp_no_placement_strategy
 from estimate import FASOP
-from device_placement import device_placement, get_all_cluster_combinations
+from device_placement import device_placement, get_all_cluster_combinations, device_placement_all
 from model_config import get_model_config
 
 import argparse
@@ -33,13 +33,8 @@ parser.add_argument("--pareto", action='store_true', help="True if you want to r
 args = parser.parse_args()
 
 if args.pareto and args.gpu_per_node ==4 :
-    print("Pareto experiments should use 8 GPUs per node")
-    print("would you like to use args.gpu_per_node 8? (y/n)")
-    ans = input()
-    if ans == 'y':
-        args.gpu_per_node = 8
-    else:
-        print("gpu per node is 4")
+    print("Pareto experiments should use 8 GPUs per node, so we will use 8 GPUs per node")
+    args.gpu_per_node = 8
 
 time_s = time.time()
 # number of GPU per node, number of nodes
@@ -116,13 +111,10 @@ for cluster_info in cluster_combinations:
                 for k in parallel_dim:
                     parallel_dim[k] = int(parallel_dim[k].item())
 
-                if d[0][1] == torch.tensor([1840 * 1e9]).float():
-                    price_per_s_1 = 32.7726 / 3600
-                else:
-                    price_per_s_1 = 5.672 / 3600
+                price_per_s_1 = 32.7726 / 3600
                 price_per_s_2 = 5.672 / 3600
 
-                price_per_s = price_per_s_1 + price_per_s_2 * (num_node - 1)
+                price_per_s = price_per_s_1*n_a100 + price_per_s_2 * n_a10
                 price_per_step = price_per_s * cost.item() # price per second * second per step 
                 want_simulate.append((mbs, h, w,(gpu_per_node*num_node/(h*w)), node_type, partition, cost.item(), pipecost.item(), dp_side_cost.item(), all_reduce_embedding_cost, price_per_step, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem))
 

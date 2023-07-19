@@ -95,7 +95,6 @@ def get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, gpu_type_lst):
     stage_latency = [Stage() for _ in range(num_stage)]
 
     if num_stage==1:
-        cost_e = cost_e_a100
         if gpu_type_lst[0] == 'A10':
             stage_latency[0].set_comp_time(sum(cost_e_a10))
             return stage_latency
