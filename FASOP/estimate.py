@@ -161,7 +161,10 @@ def get_cost_e(is_a100, model_config, parallel_config, profile_cost, _layer=None
                             cur_layer = bs/4 * profile_cost[str(int(mp.item()))][layer_id]
                         cost_e[i][layer_id] = cur_layer
                     elif layer_type == "transformer_layer":
-                        cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
+                        if bs < 8:
+                            cur_layer = profile_cost[str(int(mp.item()))][layer_id]
+                        else:
+                            cur_layer = bs/4 * profile_cost[str(int(mp.item()))][layer_id]
                         cost_e[i][layer_id] = cur_layer
                     elif layer_type == "post_process":
                         cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
