@@ -1019,10 +1019,10 @@ class ParallelTransformer(MegatronModule):
                 if args.balance:
                     balance = args.balance.split("-")
                     if layer_type == LayerType.encoder:
-                        offset = sum(balance[:pipeline_rank])
+                        offset = sum(int(balance[i]) for i in range(pipeline_rank))
                     else:
                         num_ranks_in_enc = args.pipeline_model_parallel_split_rank
-                        offset = sum(balance[num_ranks_in_enc:pipeline_rank])
+                        offset = sum(int(balance[i]) for i in range(num_ranks_in_enc,pipeline_rank))
                 else:
                     if layer_type == LayerType.encoder:
                         offset = pipeline_rank * self.num_layers
