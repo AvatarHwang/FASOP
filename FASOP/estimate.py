@@ -142,7 +142,7 @@ def get_cost_e(is_a100, model_config, parallel_config, profile_cost, _layer=None
                 if layer_type == "embedding_layer" or layer_type == "post_process":
                     if is_a100 is False: # A10 GPU
                         cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
-                    else:
+                    else: # A100 GPU
                         cur_layer = profile_cost[str(int(mp.item()))][layer_id]
                 elif layer_type == "transformer_layer":
                     cur_layer = bs * profile_cost[str(int(mp.item()))][layer_id]
@@ -453,15 +453,8 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
 
     cost_e_a100 = get_cost_e(is_a100=True, 
                         model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a100"], _layer=_layer, model_type=model_type)
-    if dp_degree==16 and mbs==16:
-        print(f"batch size: {mbs}")
-        print(f"sum of cost_e_a100 : {torch.sum(cost_e_a100)}")
-        print(f"cost_e_a100 : {cost_e_a100}")
     cost_e_a10 = get_cost_e(is_a100=False, 
                         model_config=model_config, parallel_config=parallel_config, profile_cost=amp_config["profile_cost_a10"], _layer=_layer, model_type=model_type)
-    if dp_degree==16 and mbs==16:
-        print(f"sum of cost_e_a10 : {torch.sum(cost_e_a10)}")
-        print(f"cost_e_a10 : {cost_e_a10}\n")
     cost_c, layer_type = get_cost_c(cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config, _layer=_layer)
 
@@ -480,7 +473,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
 
         if pp_degree>1:
             PP_C = []
-            for pp_encoder in range(1, min(pp_degree, int(len(cost_e_a100)/2-1))):
+            for pp_encoder in range(1, min(pp_degree, int(len(cost_e_a100)/2))):
                 pp_decoder = pp_degree - pp_encoder
                 if pp_decoder <= L/2:
                     PP_C.append([pp_encoder, pp_decoder])
@@ -521,8 +514,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                                                     np.asarray(cost_e_a10), 
                                                     np.asarray(cost_c), 
                                                     pp_degree,
-                                                    N, M, 
-                                                    node_type)
+                                                    gpu_type_lst)
             is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info) # use gpu_type_lst
 
             pipecost_last, stage_wise_cost_lst = schedule(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, stage_back_send_time_lst)
