@@ -618,7 +618,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
             oom = True
             oom_gpumem = memory[i] * error_percent
         
-        if (memory_zero[i] * error_percent) > memory_max:
+        if (memory_zero[i]) > memory_max:
             oom_zero = True
             zerooom_gpumem = memory_zero[i] * error_percent
     # debug              
