@@ -429,8 +429,8 @@ class TransformerLanguageModel(MegatronModule):
                 pooling_sequence_index=0,
                 enc_hidden_states=None, output_enc_hidden=False):
 
-        torch.cuda.synchronize()
-        start_time = time.time()
+        # torch.cuda.synchronize()
+        # start_time = time.time()
 
         # Encoder embedding.
         if self.pre_process:
@@ -438,11 +438,11 @@ class TransformerLanguageModel(MegatronModule):
                                            tokentype_ids=tokentype_ids)
         else:
             encoder_input = None
-        torch.cuda.synchronize()
-        if torch.distributed.get_rank() == 0:
-            print('input embedding time: ', time.time() - start_time)
+        # torch.cuda.synchronize()
+        # if torch.distributed.get_rank() == 0:
+        #     print('input embedding time: ', time.time() - start_time)
 
-        start_time = time.time()
+        # start_time = time.time()
         # Run encoder.
         if enc_hidden_states is None:
             if self.encoder is not None:
@@ -454,18 +454,18 @@ class TransformerLanguageModel(MegatronModule):
                 encoder_output = self.encoder_hidden_state
         else:
             encoder_output = enc_hidden_states.to(encoder_input.dtype)
-        torch.cuda.synchronize()
-        if torch.distributed.get_rank() == 0:
-            print('encoder time: ', time.time() - start_time)
+        # torch.cuda.synchronize()
+        # if torch.distributed.get_rank() == 0:
+        #     print('encoder time: ', time.time() - start_time)
 
         start_time = time.time()
         if self.post_process:
             if self.add_pooler:
                 pooled_output = self.pooler(encoder_output,
                                             pooling_sequence_index)
-        torch.cuda.synchronize()
-        if torch.distributed.get_rank() == 0:
-            print('post_process time: ', time.time() - start_time)
+        # torch.cuda.synchronize()
+        # if torch.distributed.get_rank() == 0:
+        #     print('post_process time: ', time.time() - start_time)
 
         # output_enc_hidden refers to when we just need the encoder's
         # output. For example, it is helpful to compute
@@ -476,16 +476,16 @@ class TransformerLanguageModel(MegatronModule):
             else:
                 return encoder_output
 
-        start_time = time.time()
+        # start_time = time.time()
         # Decoder embedding.
         if self.pre_process:
             decoder_input = self.embedding(dec_input_ids,
                                            dec_position_ids)
         else:
             decoder_input = None
-        torch.cuda.synchronize()
-        if torch.distributed.get_rank() == 0:
-            print('decoder embedding time: ', time.time() - start_time)
+        # torch.cuda.synchronize()
+        # if torch.distributed.get_rank() == 0:
+        #     print('decoder embedding time: ', time.time() - start_time)
 
         # Run decoder.
         decoder_output = self.decoder(
@@ -494,20 +494,14 @@ class TransformerLanguageModel(MegatronModule):
             encoder_output=encoder_output,
             enc_dec_attn_mask=enc_dec_attn_mask,
             inference_params=inference_params)
-        torch.cuda.synchronize()
-        if torch.distributed.get_rank() == 0:
-            print('decoder time: ', time.time() - start_time)
-        start_time = time.time()
+        # torch.cuda.synchronize()
+        # if torch.distributed.get_rank() == 0:
+        #     print('decoder time: ', time.time() - start_time)
+        # start_time = time.time()
 
         if self.add_pooler and self.post_process:
-            torch.cuda.synchronize()
-            if torch.distributed.get_rank() == 0:
-                print('decoder post_process time: ', time.time() - start_time)
             return decoder_output, encoder_output, pooled_output
         else:
-            torch.cuda.synchronize()
-            if torch.distributed.get_rank() == 0:
-                print('decoder post_process time: ', time.time() - start_time)
             return decoder_output, encoder_output
 
     def state_dict_for_save_checkpoint(self, prefix='', keep_vars=False):
