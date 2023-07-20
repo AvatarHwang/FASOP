@@ -233,7 +233,7 @@ def get_cost_e(is_a100, model_config, parallel_config, profile_cost, _layer=None
                         elif bs == 16:
                             cur_layer = 1.2 * 1.2 * 1.4 * 1.6 * profile_cost[str(int(mp.item()))][layer_id]
                         else:
-                            cur_layer = bs / 16.0 * 1.2 * 1.2 * 1.2 * 1.2 * profile_cost[str(int(mp.item()))][layer_id]
+                            cur_layer = bs / 16.0 * 1.2 * 1.2 * 1.4 * 1.6 * profile_cost[str(int(mp.item()))][layer_id]
                         cost_e[i][layer_id] = cur_layer
                 # A100 GPU
                 else:
