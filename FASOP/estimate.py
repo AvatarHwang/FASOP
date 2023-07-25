@@ -85,7 +85,7 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
     last_volume = torch.zeros(1,)
     for i in range(_num_layer):
         layer_type = _layer[i]
-        if layer_type == "embedding_layer" or layer_type == "transformer_layer" or layer_type == "encoder" or layer_type == "decoder":
+        if layer_type == "embedding_layer" or layer_type == "transformer_layer" or layer_type == "encoder" or layer_type == "decoder" or layer_type == "post_process":
             last_volume = bs * s * h
             layer_volume.append(last_volume)
         else:
@@ -465,7 +465,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     #if "T5" in model_type:
         gpu_type_lst = get_gpu_for_stage(pp_degree, N, node_type)
 
-        partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, gpu_type_lst)
+        partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = explain_minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, gpu_type_lst)
         pipecost_last, stage_wise_cost_lst = schedule(pp_degree, 
                                                     num_mb, stage_comp_time_lst, 
                                                     stage_for_send_time_lst, 
