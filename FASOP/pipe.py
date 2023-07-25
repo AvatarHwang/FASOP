@@ -101,7 +101,8 @@ def explain_minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst)
     for i in range(rest):
         partition[i-1] += 1
 
-    print(f"\ninitial partition: {partition}")
+    print(f"\ngpu type list: {gpu_type_lst}")
+    print(f"initial partition: {partition}")
     partition_history = []
     partition_history.append(partition[:])
 
@@ -110,11 +111,17 @@ def explain_minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst)
     while(1):
         stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
         stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
-        print(f"stage time: {stage_time_lst}")
+        print(stage_time_lst)
 
         max_latency = max(stage_time_lst)
-
-        if max_latency >= last_max_latency:
+        if max_latency > last_max_latency:
+            if counted:
+                partition[max_latency_index] += 1
+                partition[min_latency_index] -= 1
+                stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
+                print(f"Final partition: {partition}")
+                break
+        if max_latency == last_max_latency:
             if counted and partition in partition_history[:-1]:
                 partition[max_latency_index] += 1
                 partition[min_latency_index] -= 1
@@ -144,6 +151,7 @@ def explain_minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst)
     stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
     stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
     stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
+    print("partition history", partition_history)
 
     return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
 
@@ -168,6 +176,8 @@ def get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, gpu_type_lst):
     for stage in range(num_stage):
         num_layer_til_last_stage = sum(partition[:stage])
         num_layer_til_cur_stage = sum(partition[:stage+1])
+        print(num_layer_til_last_stage)
+        print(num_layer_til_cur_stage)
         node_idx = stage
         if gpu_type_lst[node_idx] == 'A100':
             cost_e=cost_e_a100
@@ -177,14 +187,14 @@ def get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, gpu_type_lst):
             assert False, "gpu type is not recognized"
 
         if stage == 0:
-            stage_latency[stage].set_comp_time(sum(cost_e[:partition[0]]))
+            stage_latency[stage].set_comp_time(sum(cost_e[:num_layer_til_cur_stage]))
             stage_latency[stage].set_for_send_time((cost_c[sum(partition[:stage])][stage]*num_bw_share).item())
         elif stage == num_stage-1:
             stage_latency[stage].set_comp_time(sum(cost_e[num_layer_til_last_stage:num_layer_til_cur_stage]))
             stage_latency[stage].set_back_send_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
         else:
             stage_latency[stage].set_comp_time(sum(cost_e[num_layer_til_last_stage:num_layer_til_cur_stage]))
-            stage_latency[stage].set_comm_time(2*(cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
+            stage_latency[stage].set_comm_time((cost_c[sum(partition[:stage])][stage-1]*num_bw_share).item())
             
     return stage_latency
 
