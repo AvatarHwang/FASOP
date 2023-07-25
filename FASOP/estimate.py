@@ -17,9 +17,8 @@ import torch.nn as nn
 import numpy as np
 
 from amp_utils import axis2rank
-from pipe import minmax, schedule
+from pipe import minmax, schedule, get_stage_latency, explain_minmax
 from device_placement import get_gpu_for_stage
-
 
 home_dir = os.environ['HOME'] 
 
@@ -90,7 +89,8 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
             last_volume = bs * s * h
             layer_volume.append(last_volume)
         else:
-            layer_volume.append(last_volume)
+            # unrecognized layer type
+            raise ValueError(f"Unrecognized layer type: {layer_type}")
             
     # Build communication cost between pipeline stages by looking up the cluster information
     cost_c = torch.zeros((int(dp.item()), _num_layer-1, int(pp.item()-1)))
@@ -299,6 +299,7 @@ def get_cost_e(is_a100, model_config, parallel_config, profile_cost, _layer=None
     cost_e = torch.mean(cost_e, dim=0)
     return cost_e
 
+
 def cost_all_reduce_embedding(model_config, cluster_info, parallel_config, gpu_per_node):
     precision = 16 # TODO: support fp32, should be args.precision
     tp_degree = int(parallel_config["mp"].item())
@@ -334,7 +335,6 @@ def cost_all_reduce_embedding(model_config, cluster_info, parallel_config, gpu_p
     else:
         return 0
         
-
 
 def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, partition, _layer=None, gpu_per_node=4):
     h = model_config["hidden_size"]
@@ -462,6 +462,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config, _layer=_layer)
 
     if "T5" not in model_type:
+    #if "T5" in model_type:
         gpu_type_lst = get_gpu_for_stage(pp_degree, N, node_type)
 
         partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, gpu_type_lst)
@@ -497,11 +498,16 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                                                     gpu_type_lst[pp_en:])
                 
                 partition_temp = partition_en + partition_de
-                stage_comp_time_lst_temp = stage_comp_time_lst_en + stage_comp_time_lst_de
-                stage_for_send_time_lst_temp = stage_for_send_time_lst_en + stage_for_send_time_lst_de
-                stage_back_send_time_lst_temp = stage_back_send_time_lst_en + stage_back_send_time_lst_de
-                
+
+                # re-minmax
+                stage_latency = get_stage_latency(partition_temp, cost_e_a100, cost_e_a10, cost_c, gpu_type_lst)
+                stage_time_lst_temp = [stage.get_stage_time() for stage in stage_latency]
+                stage_comp_time_lst_temp = [stage.get_comp_time() for stage in stage_latency]
+                stage_for_send_time_lst_temp = [stage.get_for_send_time() for stage in stage_latency]
+                stage_back_send_time_lst_temp = [stage.get_back_send_time() for stage in stage_latency]
+
                 pipecost_last_temp, stage_wise_cost_lst_temp = schedule(pp_degree, num_mb, stage_comp_time_lst_temp, stage_for_send_time_lst_temp, stage_back_send_time_lst_temp)
+                
                 if pipecost_last_temp < pipecost_last:
                     pipecost_last = pipecost_last_temp
                     partition = partition_temp
