@@ -30,6 +30,7 @@ parser.add_argument("--type", type=str, default="gpt2XL")
 parser.add_argument("--gpu_per_node", type=int, default=4)
 parser.add_argument("--precision", type=int, default=16)
 parser.add_argument("--pareto", action='store_true', help="True if you want to run pareto experiments (default: False)")
+parser.add_argument("--add_exp_name", type=str, default="")
 args = parser.parse_args()
 
 if args.pareto and args.gpu_per_node ==4 :
@@ -68,6 +69,7 @@ for cluster_info in cluster_combinations:
         assert len(D) != 1, "Stochastic bug: try to run the code few more times!"
 
     model_config, gbs, exp_name = get_model_config(args.type, args.precision, args.heterogeneous, args.pareto)
+    exp_name = exp_name + args.add_exp_name
 
     # remove cache directory from last run
     if os.path.exists(os.path.join(home_path, "tmp")):

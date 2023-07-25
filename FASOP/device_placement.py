@@ -80,8 +80,8 @@ def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneou
         else: # pareto
             num_c = 0
             cluster_combinations = []
-            for num_a100 in range(0, 4+1):
-                for num_a10 in range(0, 4+1):
+            for num_a100 in range(0, 8+1):
+                for num_a10 in range(0, 8+1):
                     cluster = {}
                     for i in range(num_a100+num_a10):
                         cluster[i] = '0'

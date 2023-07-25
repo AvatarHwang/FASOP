@@ -48,6 +48,9 @@ def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst):
     for i in range(rest):
         partition[i-1] += 1
 
+    partition_history = []
+    partition_history.append(partition[:])
+
     last_max_latency = 1000000
     counted = False
     while(1):
@@ -57,11 +60,11 @@ def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst):
         max_latency = max(stage_time_lst)
 
         if max_latency >= last_max_latency:
-            if counted:
+            if counted and partition in partition_history[:-1]:
                 partition[max_latency_index] += 1
                 partition[min_latency_index] -= 1
                 stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
-            break
+                break
         last_max_latency = max_latency
         max_latency_index = stage_time_lst.index(max_latency)
 
@@ -77,6 +80,64 @@ def minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst):
             partition[max_latency_index] -= 1
             partition[min_latency_index] += 1
             counted=True
+            partition_history.append(partition[:])
+    
+    stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
+    stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
+    stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
+    stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
+    stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
+
+    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
+
+
+def explain_minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst):
+
+    num_balanced_layer = num_layer // pp_degree
+    partition = []
+    for i in range(pp_degree):
+        partition.append(num_balanced_layer)
+    rest = int(num_layer - (num_balanced_layer * pp_degree))
+    for i in range(rest):
+        partition[i-1] += 1
+
+    print(f"\ninitial partition: {partition}")
+    partition_history = []
+    partition_history.append(partition[:])
+
+    last_max_latency = 1000000
+    counted = False
+    while(1):
+        stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
+        stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
+        print(f"stage time: {stage_time_lst}")
+
+        max_latency = max(stage_time_lst)
+
+        if max_latency >= last_max_latency:
+            if counted and partition in partition_history[:-1]:
+                partition[max_latency_index] += 1
+                partition[min_latency_index] -= 1
+                stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
+                print(f"Final partition: {partition}")
+                break
+        last_max_latency = max_latency
+        max_latency_index = stage_time_lst.index(max_latency)
+
+        min_latency = min(stage_time_lst)
+        min_latency_index = stage_time_lst.index(min_latency)
+
+        if (max_latency_index == 0 or max_latency_index == pp_degree-1) and partition[max_latency_index] == 2:
+            if counted:
+                partition[max_latency_index] += 1
+                partition[min_latency_index] -= 1
+                print(f"Final partition: {partition}")
+            break
+        if partition[max_latency_index]>1:
+            partition[max_latency_index] -= 1
+            partition[min_latency_index] += 1
+            counted=True
+            partition_history.append(partition[:])
     
     stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
     stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
