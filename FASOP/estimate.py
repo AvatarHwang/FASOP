@@ -602,7 +602,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
             
             # print(f" [{j}]: layer_type: {layer_type[i]} param_count:{param_count.item()} activation: {activation.item()}")
         major = param_count * 18
-        major_zero = param_count * (6 + (12 / dp))
+        major_zero = param_count * (6 + int(12 / dp))
         #print(f"major: {major} major_zero: {major_zero}")
         memory.append((major + activation) / 1024 /1024 /1024)
         memory_zero.append((major_zero + activation) / 1024 / 1024 /1024)
@@ -610,7 +610,7 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
 
     oom = False
     oom_zero = False
-    error_percent=1.05
+    error_percent=1.10
     # oom_gpumem = 0.0
     # zerooom_gpumem = 0.0
     oom_gpumem = max(memory)
