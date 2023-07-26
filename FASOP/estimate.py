@@ -597,9 +597,9 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
                 activation += (s * b * p * h ) * (10 + ( 24 / tp ) + 5 * (a * s) / (h * tp) )  # tensor + sequence 
                 # if i == 0:
                     # pipeline_buffer += mbs * seq_len * h # BLH
-            else:
-                pass
-            
+            elif layer_type[i] == "post_process":
+                param_count += ( h * v ) / tp
+                activation += (4 * s * b * h ) / tp + ( 4 * s * b * v ) / tp
             # print(f" [{j}]: layer_type: {layer_type[i]} param_count:{param_count.item()} activation: {activation.item()}")
         major = param_count * 18
         major_zero = param_count * (6 + int(12 / dp))
