@@ -470,7 +470,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                                                     num_mb, stage_comp_time_lst, 
                                                     stage_for_send_time_lst, 
                                                     stage_back_send_time_lst)
-        is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info)
+        is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info, gbs, num_mb)
     else: # If the model is T5
         # get gpu type for each stage
         gpu_type_lst = get_gpu_for_stage(pp_degree, N, node_type)
@@ -516,7 +516,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                     stage_back_send_time_lst = stage_back_send_time_lst_temp
                     stage_wise_cost_lst = stage_wise_cost_lst_temp
                     
-                is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info) # use gpu_type_lst
+                is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info, gbs, num_mb) # use gpu_type_lst
         else:
             partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst = minmax(int(len(cost_e_a100)),
                                                     np.asarray(cost_e_a100), 
@@ -524,7 +524,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                                                     np.asarray(cost_c), 
                                                     pp_degree,
                                                     gpu_type_lst)
-            is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info) # use gpu_type_lst
+            is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem  = EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info, gbs, num_mb) # use gpu_type_lst
 
             pipecost_last, stage_wise_cost_lst = schedule(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, stage_back_send_time_lst)
         
@@ -551,35 +551,58 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     return rank_map, partition, cost_last, pipecost_last, dp_side_cost_last, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem
     
 
-def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info):
+def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, cluster_info, gbs, num_mb):
     h = model_config["hidden_size"] 
     v = model_config["vocab_size"]
     s = model_config["sequence_length"]
     a = model_config["num_attention_heads"]
-    tp = parallel_config["mp"] 
+    tp = parallel_config["mp"]
+    pp = parallel_config["pp"] 
     dp = parallel_config["dp"]
     b = parallel_config["micro_bs"]
+    gbs = gbs
+    num_mb = num_mb
     N = len(cluster_info)
-    #print(f"h: {h} v: {v} s: {s} a: {a} tp: {tp} dp: {dp} b: {b} N: {N}")
+    
+    
     memory = []
     memory_zero = []
-    for stage in partition:
+    p = pp
+    if num_mb > pp:
+        p = pp
+    else:
+        p = num_mb
+        # if num_mb < 1:
+        #     p = 
+        # else:
+        #     p = num_mb
+    # print(f"h: {h} v: {v} s: {s} a: {a} tp: {tp.item()} dp: {dp.item()} pp: {pp.item()} b: {b} N: {N} p: {p}")        
+    # print(f"layer_type: {layer_type}")
+    # print(f"partition: {partition}")
+    st = 0
+    en = 0
+    for j, stage in enumerate(partition):
+        st = 0 + en 
+        en += stage
         param_count = 0 # unit: bytes
         activation = 0 # unit: bytes
         # pipeline_buffer = 0
-        for i in range(stage):
+        for i in range(st, en):
             if layer_type[i] == "embedding_layer" :
-                param_count += h * v
-                activation += 0
+                param_count += ( h * v ) / tp
+                activation += ( s * b * h * pp * p) / tp
+                # activation += ( s ) / tp
             elif layer_type[i] == "transformer_layer" or layer_type[i] == "encoder" or layer_type[i] == "decoder":
-                param_count += 12 * h ** 2
-                activation += ( (s * b * h) * (34 + 5 * (a * s) / h) ) / tp # tensor + sequence 
+                param_count += ( 12 * h ** 2 ) / tp
+                activation += (s * b * p * h ) * (10 + ( 24 / tp ) + 5 * (a * s) / (h * tp) )  # tensor + sequence 
                 # if i == 0:
                     # pipeline_buffer += mbs * seq_len * h # BLH
             else:
                 pass
+            
+            # print(f" [{j}]: layer_type: {layer_type[i]} param_count:{param_count.item()} activation: {activation.item()}")
         major = param_count * 18
-        major_zero = param_count * (6 + int(12 / dp))
+        major_zero = param_count * (6 + (12 / dp))
         #print(f"major: {major} major_zero: {major_zero}")
         memory.append((major + activation) / 1024 /1024 /1024)
         memory_zero.append((major_zero + activation) / 1024 / 1024 /1024)
@@ -593,10 +616,13 @@ def EstimatePeakMemory(partition, model_config, parallel_config, layer_type, clu
     oom_gpumem = max(memory)
     zerooom_gpumem = max(memory_zero)
     # debug    
-    #print(f"partition size: {len(partition)}, \n partition: {partition}")
+    # print(f"partition size: {len(partition)}, \n partition: {partition}")
     # print(f"cluster size: {len(cluster_info)}, \n cluster_info: {cluster_info}")
-    #print(f"memory size: {len(memory)}, oom_gpumem: {oom_gpumem}, \n {memory}")
-    #print(f"memory zero size: {len(memory_zero)}, zerooom_gpumem: {zerooom_gpumem}, \n {memory_zero}")
+    # print(f"memory size: {len(memory)}, oom_gpumem: {oom_gpumem}, \n {memory}")
+    # print(f"memory zero size: {len(memory_zero)}, zerooom_gpumem: {zerooom_gpumem}, \n {memory_zero}")
+    
+    # print(f"oom_gpumem: {oom_gpumem}, \n {memory}")
+    # print(f"zerooom_gpumem: {zerooom_gpumem}, \n {memory_zero}")
     
     for i in range(len(partition)):
         if len(partition) > N:
