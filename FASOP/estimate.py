@@ -17,7 +17,7 @@ import torch.nn as nn
 import numpy as np
 
 from amp_utils import axis2rank
-from pipe import minmax, schedule, get_stage_latency, explain_minmax
+from pipe import minmax, schedule, get_stage_latency, explain_minmax, dynamic_programming
 from device_placement import get_gpu_for_stage
 
 home_dir = os.environ['HOME'] 
@@ -93,7 +93,7 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
             raise ValueError(f"Unrecognized layer type: {layer_type}")
             
     # Build communication cost between pipeline stages by looking up the cluster information
-    cost_c = torch.zeros((int(dp.item()), _num_layer-1, int(pp.item()-1)))
+    cost_c = torch.zeros((int(dp.item()), _num_layer, int(pp.item()-1)))
     for i in range(int(dp.item())):    
         for j in range(int(pp.item()-1)):
             # get the slowest mp gpu connection
@@ -111,7 +111,7 @@ def get_cost_c(cluster_info, model_config, parallel_config, amp_config, dp_index
                     cur_bandwidth = cluster_info[node_cur][1] / 3.5
                 if cur_bandwidth < slowest_bandwidth:
                     slowest_bandwidth = cur_bandwidth     
-            for k in range(_num_layer-1):
+            for k in range(_num_layer):
                 cost_c[i][k][j] = layer_volume[k] * precision / slowest_bandwidth
     cost_c = torch.max(cost_c, dim=0)
     return cost_c.values, _layer
@@ -464,8 +464,8 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     if "T5" not in model_type:
     #if "T5" in model_type:
         gpu_type_lst = get_gpu_for_stage(pp_degree, N, node_type)
-
-        partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = explain_minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, gpu_type_lst)
+        partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, gpu_type_lst)
+        #partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst = dynamic_programming(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, num_mb, gpu_type_lst)
         pipecost_last, stage_wise_cost_lst = schedule(pp_degree, 
                                                     num_mb, stage_comp_time_lst, 
                                                     stage_for_send_time_lst, 
