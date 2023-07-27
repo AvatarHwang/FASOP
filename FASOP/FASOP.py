@@ -65,8 +65,8 @@ for cluster_info in cluster_combinations:
     n_a10 = num_node - n_a100
 
     D = device_placement(n_a100, n_a10)
-    if args.pareto is False and args.heterogeneous is True:
-        assert len(D) != 1, "Stochastic bug: try to run the code few more times!"
+    #if args.pareto is False and args.heterogeneous is True:
+    #    assert len(D) != 1, "Stochastic bug: try to run the code few more times!"
 
     model_config, gbs, exp_name = get_model_config(args.type, args.precision, args.heterogeneous, args.pareto)
     exp_name = exp_name + args.add_exp_name
