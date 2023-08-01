@@ -17,8 +17,10 @@ import torch.nn as nn
 import numpy as np
 
 from amp_utils import axis2rank
-from pipe import minmax, schedule, get_stage_latency, explain_minmax, dynamic_programming
+from pipe import minmax, schedule, get_stage_latency, explain_minmax, dynamic_programming, exhaustive_partition
 from device_placement import get_gpu_for_stage
+
+import copy
 
 home_dir = os.environ['HOME'] 
 
@@ -55,11 +57,11 @@ class FASOP(nn.Module):
             profile_cost_a10 = 3 * np.load(f"{known_record}.npy")
             self.profile_cost_A10[str(mp_size)] = profile_cost_a10
         
-    def forward(self, args, node_type):
+    def forward(self, args, node_type, exhaustive):
         config, bs, micro_bs, cluster_info, model_config, oth = args
         amp_config = {"profile_cost_a100" : self.profile_cost_A100,
                       "profile_cost_a10" : self.profile_cost_A10}
-        rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem = predict(config, bs, micro_bs, cluster_info, model_config, amp_config, oth, node_type)
+        rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem = predict(config, bs, micro_bs, cluster_info, model_config, amp_config, oth, node_type, exhaustive)
         return rank_map, partition, amp_pred, pipecost, dp_side_cost, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem
         
 # pipeline communication cost, return shape: (L-1, pp-1)
@@ -399,7 +401,7 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     return ds_partition, dp_cost_list
 
 
-def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_type):
+def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_type, exhaustive):
     L = int(model_config["num_layers"])
     model_type = model_config["type"]
     cost = torch.zeros(1,)
@@ -462,10 +464,12 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                         model_config=model_config, parallel_config=parallel_config, amp_config=amp_config, _layer=_layer)
 
     if "T5" not in model_type:
-    #if "T5" in model_type:
         gpu_type_lst = get_gpu_for_stage(pp_degree, N, node_type)
-        partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, gpu_type_lst)
-        #partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst = dynamic_programming(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, num_mb, gpu_type_lst)
+        if exhaustive["exhaustive"] is False:
+            partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, gpu_type_lst)
+        else:
+            partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst = exhaustive_partition(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, exhaustive["gpu_type_lst"])
+            assert False, "Done!"
         pipecost_last, stage_wise_cost_lst = schedule(pp_degree, 
                                                     num_mb, stage_comp_time_lst, 
                                                     stage_for_send_time_lst, 
@@ -482,8 +486,38 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
                 if pp_decoder <= L/2:
                     PP_C.append([pp_encoder, pp_decoder])
             pipecost_last = 1000000
+            if exhaustive["exhaustive"] is True:
+                gpu_type_lst = exhaustive["gpu_type_lst"]
+                max_t = 100000.0
+                for pp_c in PP_C:
+                    pp_en, pp_de = pp_c
+                    partition_en, stage_comp_time_lst_en, _, _, stage_for_send_time_lst_en, stage_back_send_time_lst_en = exhaustive_partition(int(len(cost_e_a100)/2),
+                                                        np.asarray(cost_e_a100), 
+                                                        np.asarray(cost_e_a10), 
+                                                        np.asarray(cost_c), 
+                                                        pp_en, 
+                                                        gpu_type_lst[:pp_en])
+                    partition_de, stage_comp_time_lst_de, _, _, stage_for_send_time_lst_de, stage_back_send_time_lst_de = exhaustive_partition(int(len(cost_e_a100)/2),
+                                                        np.asarray(cost_e_a100),
+                                                        np.asarray(cost_e_a10),
+                                                        np.asarray(cost_c),
+                                                        pp_de,
+                                                        gpu_type_lst[pp_en:])
+                    partition = partition_en + partition_de
+                    stage_latency = get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, gpu_type_lst)
+                    stage_time_lst_temp = [stage.get_stage_time() for stage in stage_latency]
+                    stage_comp_time_lst_temp = [stage.get_comp_time() for stage in stage_latency]
+                    stage_for_send_time_lst_temp = [stage.get_for_send_time() for stage in stage_latency]
+                    stage_back_send_time_lst_temp = [stage.get_back_send_time() for stage in stage_latency]
+                    pipecost_last_temp, stage_wise_cost_lst_temp = schedule(pp_degree, num_mb, stage_comp_time_lst_temp, stage_for_send_time_lst_temp, stage_back_send_time_lst_temp)
+                    if max_t > pipecost_last_temp:
+                        max_t = pipecost_last_temp
+                        partition_last=partition[:]
+                print("partition_last", partition_last, "max_t", max_t)
+                assert False, "Done!"
+                
             for pp_c in PP_C:
-                pp_en, pp_de = pp_c                
+                pp_en, pp_de = pp_c
                 partition_en, stage_comp_time_lst_en, _, _, stage_for_send_time_lst_en, stage_back_send_time_lst_en = minmax(int(len(cost_e_a100)/2), 
                                                     np.asarray(cost_e_a100), 
                                                     np.asarray(cost_e_a10), 

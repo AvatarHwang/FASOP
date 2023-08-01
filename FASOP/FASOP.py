@@ -31,7 +31,17 @@ parser.add_argument("--gpu_per_node", type=int, default=4)
 parser.add_argument("--precision", type=int, default=16)
 parser.add_argument("--pareto", action='store_true', help="True if you want to run pareto experiments (default: False)")
 parser.add_argument("--add_exp_name", type=str, default="")
+parser.add_argument("--exhaustive", action='store_true', help="True if you want to run exhaustive search for model partitioning (default: False)")
 args = parser.parse_args()
+
+if args.exhaustive:
+    print("type parallelization strategy you want to search")
+    mbs_exhaustive = int(input("mbs: "))
+    gpu_type_list_exhaustive = input("gpu_type_list (example:A100,A10,A10,A10) :").split(',')
+    tp_exhaustive = int(input("tp: "))
+    dp_exhaustive = int(input("dp: "))
+    pp_exhaustive = int(input("pp: "))
+
 
 if args.pareto and args.gpu_per_node ==4 :
     print("Pareto experiments should use 8 GPUs per node, so we will use 8 GPUs per node")
@@ -51,6 +61,10 @@ cluster_info = {} # a100:4 : a10:28    8 x nodes
 
 A100 = [torch.tensor([40 * 1e9]).float(), torch.tensor([1840 * 1e9]).float()]
 A10 = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+
+if args.pareto:
+    A100 = [torch.tensor([400 * 1e9]).float(), torch.tensor([1840 * 1e9]).float()]
+    A10 = [torch.tensor([100 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
 
 cluster_combinations = get_all_cluster_combinations(args.type, args.pareto, args.heterogeneous)
 want_simulate = [] 
@@ -105,16 +119,27 @@ for cluster_info in cluster_combinations:
                 h, w, mbs, known = ret
                 parallel_dim = {"tp_deg": torch.ones(1,)*h, "dp_deg": torch.ones(1,)*w, "pp_deg": torch.ones(1,)*(gpu_per_node*num_node/(h*w))}
                 fake_config = np.ones((gpu_per_node,num_node)) * (-1)
-                model_args = (fake_config, gbs, mbs, d, model_config, parallel_dim)    
+                model_args = (fake_config, gbs, mbs, d, model_config, parallel_dim)
+                if args.exhaustive:
+                    mbs = mbs_exhaustive
+                    gpu_type_list = gpu_type_list_exhaustive
+                    tp = tp_exhaustive
+                    dp = dp_exhaustive
+                    pp = pp_exhaustive
+                    parallel_dim = {"tp_deg": torch.ones(1,)*int(tp), "dp_deg": torch.ones(1,)*int(dp), "pp_deg": torch.ones(1,)*int(pp)} 
+                    model_args = (fake_config, gbs, mbs, d, model_config, parallel_dim)
+                    exhaustive_args = {"exhaustive": True, "gpu_type_lst": gpu_type_list}
 
                 with torch.no_grad():
-                    rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem = model(model_args, node_type)
+                    rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem = model(model_args, node_type, exhaustive_args)
                 
                 for k in parallel_dim:
                     parallel_dim[k] = int(parallel_dim[k].item())
 
                 price_per_s_1 = 32.7726 / 3600
-                price_per_s_2 = 5.672 / 3600
+                price_per_s_2 = 8.144 / 3600
+                if args.pareto:
+                    price_per_s_2 = 16.288 / 3600
 
                 price_per_s = price_per_s_1*n_a100 + price_per_s_2 * n_a10
                 price_per_step = price_per_s * cost.item() # price per second * second per step 
