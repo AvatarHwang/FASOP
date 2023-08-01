@@ -248,6 +248,43 @@ def schedule(pp_degree, num_mb, stage_comp_time_lst, stage_for_send_time_lst, st
     return cost, stage_wise_cost_lst
 
 
+def exhaustive_partition(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst):
+
+    s_time = time.time()
+    P = compositions(num_layer, pp_degree)
+    max_latency = np.inf
+    for p in P:
+        cur_latency = get_stage_latency(p, cost_e1, cost_e2, cost_c, gpu_type_lst)
+        stage_time_lst = [stage.get_comp_time() for stage in cur_latency]
+        
+        if max(stage_time_lst) < max_latency:
+            partition = p[:]
+            stage_latency = cur_latency
+            max_latency = max(stage_time_lst)
+
+    stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
+    stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
+    stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
+    stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
+    stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
+    print(f"exhaustive_partition: {time.time()-s_time:.4f} sec")
+    print(f"partition: {partition}")
+
+    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
+    
+        
+
+from itertools import permutations
+def compositions(n, k):
+    def inner(n, k):
+        if k == 1:
+            yield (n,)
+        else:
+            for i in range(1, n):
+                for rest in inner(n-i, k-1):
+                    yield (i,) + rest
+    return list(inner(n, k))
+
 def dynamic_programming(L, cost_e_a100, cost_e_a10, cost_c, pp, num_mb, gpu_type_list):
     """
     Model partitioning method coded by AMP
@@ -255,6 +292,8 @@ def dynamic_programming(L, cost_e_a100, cost_e_a10, cost_c, pp, num_mb, gpu_type
     """
     time_dp_s = time.time()
     possible = [0]
+
+    print(f"\ngpu_type_list: {gpu_type_list}")
 
     if pp==1:
         if gpu_type_list[0]=="A100":
@@ -272,18 +311,20 @@ def dynamic_programming(L, cost_e_a100, cost_e_a10, cost_c, pp, num_mb, gpu_type
         return S, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
 
     else:
-        for stage in range(pp):
+        
+        for i in range(1, L+1):
+            stage = 0
             if gpu_type_list[stage]=='A100':
                 cost_e = cost_e_a100
             elif gpu_type_list[stage]=='A10':
                 cost_e = cost_e_a10
             else:
                 raise ValueError(f"Unrecognized gpu type: {gpu_type_list[stage]}")
-            for i in range(1, L+1):
-                ptr = 0
-                while ptr + i <= L:
-                    possible.append(sum(cost_e[ptr:ptr+i]))
-                    ptr += 1
+            ptr = 0
+            while ptr + i <= L:
+                possible.append(sum(cost_e[ptr:ptr+i]))
+                ptr += 1
+                stage += 1
         
         possible = sorted(list(set(possible)))
         trace = []
@@ -314,14 +355,14 @@ def dynamic_programming(L, cost_e_a100, cost_e_a10, cost_c, pp, num_mb, gpu_type
                         else:
                             cost_best = np.infty
                             S_best = []
-                            for cut in range(j-1, i):
+                            for cut in range(j-1, i): #i = num layer, j = stage
                                 cur_sum = sum(cost_e[cut+1:i+1])
                                 assert cur_sum in possible
                                 S, cost_ = trace[cut][j-1][possible.index(max(cur_sum, possible[m]))]
                                 cost_ += (num_mb-1) * max(0, cur_sum - possible[m])
                                 cost_ += cost_c[cut][j-1]
                                 if cost_ < cost_best:
-                                    cost_best = cost_ - cost_c[cut][j-1]
+                                    cost_best = copy.deepcopy(cost_)
                                     S_ = copy.deepcopy(S)
                                     S_.append(i-cut)
                                     S_best = S_
@@ -332,6 +373,7 @@ def dynamic_programming(L, cost_e_a100, cost_e_a10, cost_c, pp, num_mb, gpu_type
         # add each stage cost at the end 
         S, cost = trace[L-1][pp-1][0]
         print(f"dynamic programming used {round(time_dp_used,2)} seconds with {L} layers and {pp} stages.")
+        print(f"S: {S}, cost: {cost}")
         
         stage_latency = get_stage_latency(S, cost_e_a100, cost_e_a10, cost_c, gpu_type_list)
         stage_time_lst = [stage.get_stage_time() for stage in stage_latency]

@@ -41,7 +41,20 @@ def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneou
     cluster_info={}
     if model_type == "gpt2XL":
         if pareto:
-            assert False, "Pareto only supported for T5"
+            num_c = 0
+            cluster_combinations = []
+            for num_a100 in range(0, 8+1):
+                for num_a10 in range(0, 8+1):
+                    cluster = {}
+                    for i in range(num_a100+num_a10):
+                        cluster[i] = '0'
+                    for i in range(num_a100):
+                        cluster.update({i:'1'})
+                    if len(cluster.keys())>0:
+                        cluster_combinations.append(cluster)
+                    num_c += 1
+            print(f"Number of clusters combinations: {num_c}")
+            return cluster_combinations
         if heterogeneous==True:
             cluster_info[0]= '1'
             for i in range(1, 8):
