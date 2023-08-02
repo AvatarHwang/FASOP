@@ -129,6 +129,8 @@ for cluster_info in cluster_combinations:
                     parallel_dim = {"tp_deg": torch.ones(1,)*int(tp), "dp_deg": torch.ones(1,)*int(dp), "pp_deg": torch.ones(1,)*int(pp)} 
                     model_args = (fake_config, gbs, mbs, d, model_config, parallel_dim)
                     exhaustive_args = {"exhaustive": True, "gpu_type_lst": gpu_type_list}
+                else:
+                    exhaustive_args = {"exhaustive": False, "gpu_type_lst": None}
 
                 with torch.no_grad():
                     rank_map, partition, cost, pipecost, dp_side_cost, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem = model(model_args, node_type, exhaustive_args)
