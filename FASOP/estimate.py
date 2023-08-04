@@ -357,6 +357,8 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
     assert len(ds_partition) == pp + 1
 
     counted = False
+    # debug
+    print(f"tp: {mp.item()}, dp: {dp.item()}, pp: {pp.item()}")
     
     param_count = 0    
     for layer_id in range(ds_partition[0], ds_partition[1]):
@@ -367,6 +369,8 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
                 param_count += (h*v)
         elif layer_type == "transformer_layer" or layer_type == "encoder" or layer_type == "decoder":
             param_count += ((12 * h ** 2)+20800) / mp
+    
+    print(f" param_count: {param_count}")
     
     # Get communication bandwidth of pipeline stage 0
     dp_cost_list = []
@@ -388,17 +392,20 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         bandwidth = min(bandwidth_lst)
 
         # Inter-node bandwidth share
-        if int(mp.item())*int(dp.item()) > gpu_per_node and int(dp.item())>1:
+        if int(mp.item())*int(dp.item()) >= gpu_per_node and int(dp.item())>1:
             bandwidth = bandwidth / int(mp.item())
         
         # Intra-node bandwidth share
-        elif int(mp.item())*int(dp.item()) <= gpu_per_node and int(dp.item())>1:
+        elif int(mp.item())*int(dp.item()) < gpu_per_node and int(dp.item())>1 and int(mp.item()) > 1:
             if gpu_type_lst[i] == "A10":
                 bandwidth = bandwidth / (gpu_per_node/int(dp.item()))
-
+    
         # All-reduce cost: 2(n-1)M / nB
         precision = 16 #TODO: precision should be args.precision
         dp_cost_list.append(2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth))
+    
+    print(f"bandwidth: {bandwidth}")
+    print(f"dp_cost_list: {dp_cost_list}")
         
     return ds_partition, dp_cost_list
 
