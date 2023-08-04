@@ -112,8 +112,6 @@ def explain_minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst)
     for i in range(rest):
         partition[i-1] += 1
 
-    print(f"\ngpu type list: {gpu_type_lst}")
-    print(f"initial partition: {partition}")
     partition_history = []
     partition_history.append(partition[:])
 
@@ -122,7 +120,7 @@ def explain_minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst)
     while(1):
         stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
         stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
-        print(stage_time_lst)
+        print(f"partition : {partition}\n stage_time_lst : {stage_time_lst}")
 
         max_latency = max(stage_time_lst)
         if max_latency > last_max_latency:
@@ -130,14 +128,12 @@ def explain_minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst)
                 partition[max_latency_index] += 1
                 partition[min_latency_index] -= 1
                 stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
-                print(f"Final partition: {partition}")
                 break
         if max_latency == last_max_latency:
             if counted and partition in partition_history[:-1]:
                 partition[max_latency_index] += 1
                 partition[min_latency_index] -= 1
                 stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
-                print(f"Final partition: {partition}")
                 break
         last_max_latency = max_latency
         max_latency_index = stage_time_lst.index(max_latency)
@@ -149,20 +145,20 @@ def explain_minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst)
             if counted:
                 partition[max_latency_index] += 1
                 partition[min_latency_index] -= 1
-                print(f"Final partition: {partition}")
             break
         if partition[max_latency_index]>1:
             partition[max_latency_index] -= 1
             partition[min_latency_index] += 1
             counted=True
             partition_history.append(partition[:])
+        else: # no layers to substract
+            break
     
     stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
     stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
     stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
     stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
     stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
-    print("partition history", partition_history)
 
     return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
 
@@ -291,9 +287,8 @@ def dynamic_programming(L, cost_e_a100, cost_e_a10, cost_c, pp, num_mb, gpu_type
     converted output for FASOP
     """
     time_dp_s = time.time()
-    possible = [0]
-
-    print(f"\ngpu_type_list: {gpu_type_list}")
+    possible_1 = [0]
+    possible_2 = [0]
 
     if pp==1:
         if gpu_type_list[0]=="A100":
@@ -311,58 +306,55 @@ def dynamic_programming(L, cost_e_a100, cost_e_a10, cost_c, pp, num_mb, gpu_type
         return S, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
 
     else:
-        
+        ptr_lst = []
         for i in range(1, L+1):
-            stage = 0
-            if gpu_type_list[stage]=='A100':
-                cost_e = cost_e_a100
-            elif gpu_type_list[stage]=='A10':
-                cost_e = cost_e_a10
-            else:
-                raise ValueError(f"Unrecognized gpu type: {gpu_type_list[stage]}")
             ptr = 0
             while ptr + i <= L:
-                possible.append(sum(cost_e[ptr:ptr+i]))
+                possible_1.append(sum(cost_e_a100[ptr:ptr+i]))
+                possible_2.append(sum(cost_e_a10[ptr:ptr+i]))
                 ptr += 1
-                stage += 1
+                ptr_lst.append(f"{ptr}:{ptr+i}")
         
-        possible = sorted(list(set(possible)))
+        possible_1 = sorted(list(set(possible_1)))
+        possible_2 = sorted(list(set(possible_2)))
+
         trace = []
         for i in range(L):
             outer = []
             for j in range(pp):
                 inner = []
-                for m in range(len(possible)):
+                for m in range(len(possible_1)):
                     inner.append(([],np.infty))
                 outer.append(inner)
             trace.append(outer)
         
         for i in range(L): # num layer
-            for j in range(pp): 
-                if gpu_type_list[j]=='A100':
-                    cost_e = cost_e_a100
-                elif gpu_type_list[j]=='A10':
-                    cost_e = cost_e_a10
-                else:
-                    raise ValueError(f"Unrecognized gpu type: {gpu_type_list[j]}")
-                for m in range(len(possible)):
+            for j in range(pp):
+                for m in range(len(possible_1)):
                     if i+1 <= j: # invalid
                         pass
                     else:
+                        if gpu_type_list[j]=='A100':
+                            cost_e = cost_e_a100
+                            possible = possible_1
+                        elif gpu_type_list[j]=='A10':
+                            cost_e = cost_e_a10
+                            possible = possible_2
+                        else:
+                            raise ValueError(f"Unrecognized gpu type: {gpu_type_list[j]}")
                         if j == 0: # base case: 0 cut
                             cur_sum = sum(cost_e[:i+1])
                             trace[i][j][m] = ([i+1], (num_mb-1) * max(0, cur_sum - possible[m]))
                         else:
                             cost_best = np.infty
                             S_best = []
-                            for cut in range(j-1, i): #i = num layer, j = stage
+                            for cut in range(j-1, i):
                                 cur_sum = sum(cost_e[cut+1:i+1])
-                                assert cur_sum in possible
                                 S, cost_ = trace[cut][j-1][possible.index(max(cur_sum, possible[m]))]
                                 cost_ += (num_mb-1) * max(0, cur_sum - possible[m])
                                 cost_ += cost_c[cut][j-1]
                                 if cost_ < cost_best:
-                                    cost_best = copy.deepcopy(cost_)
+                                    cost_best = cost_ - cost_c[cut][j-1]
                                     S_ = copy.deepcopy(S)
                                     S_.append(i-cut)
                                     S_best = S_

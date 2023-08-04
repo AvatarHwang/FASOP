@@ -338,7 +338,7 @@ def cost_all_reduce_embedding(model_config, cluster_info, parallel_config, gpu_p
         return 0
         
 
-def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, partition, _layer=None, gpu_per_node=4):
+def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, partition, _layer=None, gpu_per_node=4, gpu_type_lst=None):
     h = model_config["hidden_size"]
     n = model_config["num_layers"]
     v = model_config["vocab_size"]
@@ -390,9 +390,11 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         # Inter-node bandwidth share
         if int(mp.item())*int(dp.item()) > gpu_per_node and int(dp.item())>1:
             bandwidth = bandwidth / int(mp.item())
+        
         # Intra-node bandwidth share
         elif int(mp.item())*int(dp.item()) <= gpu_per_node and int(dp.item())>1:
-            bandwidth = bandwidth / (gpu_per_node/int(dp.item()))
+            if gpu_type_lst[i] == "A10":
+                bandwidth = bandwidth / (gpu_per_node/int(dp.item()))
 
         # All-reduce cost: 2(n-1)M / nB
         precision = 16 #TODO: precision should be args.precision
@@ -468,7 +470,9 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
         if exhaustive["exhaustive"] is False:
             partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, gpu_type_lst)
         else:
-            partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst = exhaustive_partition(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, exhaustive["gpu_type_lst"])
+            partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst  = explain_minmax(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, exhaustive["gpu_type_lst"])
+            #partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst = exhaustive_partition(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, exhaustive["gpu_type_lst"])
+            #partition, stage_comp_time_lst, _, _, stage_for_send_time_lst, stage_back_send_time_lst = dynamic_programming(len(cost_e_a100), np.asarray(cost_e_a100), np.asarray(cost_e_a10), np.asarray(cost_c), pp_degree, num_mb, exhaustive["gpu_type_lst"])
             assert False, "Done!"
         pipecost_last, stage_wise_cost_lst = schedule(pp_degree, 
                                                     num_mb, stage_comp_time_lst, 
@@ -565,7 +569,7 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     # translate to ds form, add data parallelism cost
     _, dp_cost_list = dp_cost(config, cluster_info=cluster_info, 
                         model_config=model_config, parallel_config=parallel_config, 
-                        amp_config=amp_config, partition=partition, _layer=_layer, gpu_per_node=M)
+                        amp_config=amp_config, partition=partition, _layer=_layer, gpu_per_node=M, gpu_type_lst=gpu_type_lst)
     
     if model_type != "T5":
         all_reduce_embedding_cost = cost_all_reduce_embedding(model_config, cluster_info, parallel_config, M)
