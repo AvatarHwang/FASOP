@@ -23,13 +23,12 @@ FASOP requires a CPU for estimation tasks. We recommend creating a conda environ
 - NumPy 
 
 To prepare the necessary dependencies for FASOP, follow these steps:
-#링크 마지막에 확인
 
 - Clone the FASOP repository to your local machine:
  
     ```
     $ cd ~
-    $ git clone https://github.com/{git_id}/FASOP
+    $ git clone https://github.com/AvatarHwang/FASOP
     ```
     
 - Create a conda environment named `fasop` with Python 3.9:
@@ -56,50 +55,43 @@ To prepare the necessary dependencies for FASOP, follow these steps:
     $ conda install pytorch torchvision torchaudio cpuonly -c pytorch
     ```
 
-### II. Reproducing Experiment 4.1: Finding Optimal Parallel Strategy for GPT on Heterogeneous GPU Clusters
+### II. Reproducing Experiment 4.2: Training Throughput
 
-To reproduce Experiment 4.1, which involves finding the optimal parallel strategy for the GPT 3.5m model and 1.5b on heterogeneous GPU clusters, follow the steps below. The python codes should be located in the 'FASOP' directory of the FASOP repository. 
+To inspect the parallel strategies used, execute FASOP.py with the --type argument set to the desired model (bert, gpt2XL, or T5) and the --heterogeneous flag.
 
-- To reproduce GPT-2 345m experiment, run `FASOP_345m.py`.
-
+Example command for BERT:
     ```bash
     
-    $ python FASOP_345m.py
+    $ python FASOP.py --type bert --heterogeneous
     
     ```
 
-- To reproduce GPT-2 1.5b experiment, run `FASOP_1.5b.py`.
+Reproducing the Experiment
+The experiment can be reproduced by adding the --pareto flag. Here is an example using the gpt2XL model:
 
     ```bash
     
-    $ python FASOP_1.5b.py
-    
-    ```
-
-To reproduce Experiment 4.2, which involves finding the optimal parallel strategy for the GPT 1.5b model on virtual AWS cluster.
- - To reproduce Experiment 4.2, run `FASOP_pareto.py`.
-
-    ```bash
-    
-    $ python FASOP_pareto.py
+    $ python FASOP.py --heterogeneous --pareto
     
     ```
     
 ### III. Report    
 
-Find the results of the experiment.    
-FASOP will output a summary of the optimal parallel strategy for your model on your heterogeneous GPU cluster, including any estimated training time, cost, and other relevant metrics, in a text file. 
+FASOP will generate a summary of the optimal parallel strategy for the chosen model on your heterogeneous GPU cluster. This summary includes estimated training time, cost, and other relevant metrics. The results are saved in a text file located in the ~/FASOP/main_logs directory.
 
-#링크 마지막에 확인
+The directory structure of the output folder is as follows:
+
 - output directory location: `~/FASOP/main_logs`
 
     ```bash
-    
     main_logs
-    |- gpt345m.txt
-    |- gpt1.5b.txt
-    |- pareto.txt
-    
+    |- bert.csv
+    |- bert_heterogeneous.csv
+    |- T5.csv
+    |- T5_heterogeneous.csv
+    |- gpt2.csv
+    |- gpt2_heterogeneous.csv
+    |- gpt2_heterogeneous_pareto.csv
     ```    
     
 - The results file will contain the following fields, separated by ('\*'):
