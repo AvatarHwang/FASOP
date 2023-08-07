@@ -61,7 +61,7 @@ if not os.path.exists(dir_path):
 cluster_info = {} # a100:4 : a10:28    8 x nodes
 
 A100 = [torch.tensor([40 * 1e9]).float(), torch.tensor([1840 * 1e9]).float()]
-A10 = [torch.tensor([40 * 1e9]).float(), torch.tensor([252 * 1e9]).float()]
+A10 = [torch.tensor([40 * 1e9]).float(), torch.tensor([128 * 1e9]).float()]
 
 if args.pareto:
     A100 = [torch.tensor([400 * 1e9]).float(), torch.tensor([1840 * 1e9]).float()]
@@ -98,7 +98,6 @@ for cluster_info in cluster_combinations:
         for i in range(len(d)):
             if d[i] == 'A':
                 node_type.append('p4d.24xlarge')
-                n_a100+=1
                 d[i] = A100
                 
             elif d[i] == 'B':
@@ -139,21 +138,21 @@ for cluster_info in cluster_combinations:
                 for k in parallel_dim:
                     parallel_dim[k] = int(parallel_dim[k].item())
 
-                price_per_sec_1 = 32.7726 / 3600
+                price_per_sec_1 = 32.7726 / 3600 # cost of A100 instance
                 price_per_sec_2 = 8.144 / 3600
                 if args.pareto:
-                    price_per_sec_2 = 9.773 / 3600
+                    price_per_sec_2 = 9.773 / 3600  
 
                 price_per_sec = price_per_sec_1*n_a100 + price_per_sec_2 * n_a10
                 price_per_step = price_per_sec * cost.item() # price per second * second per step 
                 pretrain_cost = price_per_step * args.iter
-                want_simulate.append((mbs, h, w,(gpu_per_node*num_node/(h*w)), node_type, partition, cost.item(), pipecost.item(), dp_side_cost.item(), all_reduce_embedding_cost, price_per_step, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem, pretrain_cost))
+                want_simulate.append((mbs, h, w,(gpu_per_node*num_node/(h*w)), node_type, n_a100, n_a10, partition, cost.item(), pipecost.item(), dp_side_cost.item(), all_reduce_embedding_cost, price_per_step, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem, pretrain_cost))
 
 print(f"Finished {time.time() - time_s}")
 
-sorted_settings = sorted(want_simulate, key = lambda kv: kv[6])
+sorted_settings = sorted(want_simulate, key = lambda kv: kv[8])
 
-df = pd.DataFrame(sorted_settings, columns = ['mbs','tp','dp','pp','node placement','partition','estimated time (step/s)','pipeline time','DP all-reduce time','embedding layer all-reduce time','price_per_step','is_oom','oom_gpumem','is_zero_oom','zerooom_gpumem', 'train_cost'])
+df = pd.DataFrame(sorted_settings, columns = ['mbs','tp','dp','pp','node placement', 'n_a100', 'num_a10', 'partition','estimated time (s/step)','pipeline time','DP all-reduce time','embedding layer all-reduce time','price_per_step','is_oom','oom_gpumem','is_zero_oom','zerooom_gpumem', 'train_cost'])
 
 # first remove existing csv file
 if os.path.exists(f"{os.path.join(dir_path, exp_name)}.csv"):
