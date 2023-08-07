@@ -392,7 +392,7 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
             bandwidth = bandwidth / int(mp.item())
         
         # Intra-node bandwidth share
-        elif int(mp.item())*int(dp.item()) <= gpu_per_node and int(dp.item())>1:
+        elif int(mp.item())*int(dp.item()) <= gpu_per_node and int(dp.item())>1 and int(mp.item())>1:
             if gpu_type_lst[i] == "A10":
                 bandwidth = bandwidth / (gpu_per_node/int(dp.item()))
 

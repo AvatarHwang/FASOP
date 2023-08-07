@@ -39,8 +39,7 @@ def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneou
     Returns all possible cluster combinations for the given model type
     """
     cluster_info={}
-    if model_type == "gpt2XL":
-        if pareto:
+    if pareto:
             num_c = 0
             cluster_combinations = []
             for num_a100 in range(0, 8+1):
@@ -55,6 +54,7 @@ def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneou
                     num_c += 1
             print(f"Number of clusters combinations: {num_c}")
             return cluster_combinations
+    if model_type == "gpt2XL":
         if heterogeneous==True:
             cluster_info[0]= '1'
             for i in range(1, 8):
@@ -65,8 +65,6 @@ def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneou
         cluster_combinations = [cluster_info]
         return cluster_combinations
     elif model_type == "bert":
-        if pareto==True:
-            assert False, "Pareto only supported for T5"
         if heterogeneous==True:
             cluster_info[0]= '1'
             for i in range(1, 4):
@@ -77,33 +75,17 @@ def get_all_cluster_combinations(model_type="gpt2XL", pareto=False, heterogeneou
         cluster_combinations = [cluster_info]
         return cluster_combinations
     elif model_type == "T5":
-        if pareto is False:
-            if heterogeneous:
-                cluster_info[0] = '1'
-                for i in range(1, 8):
-                    cluster_info[i] = '0'
-                cluster_combinations = [cluster_info]
-                return cluster_combinations
-            else:
-                cluster_combinations = []
-                for i in range(8):
-                    cluster_info[i] = '0'
-                cluster_combinations.append(cluster_info)        
-                return cluster_combinations
-        else: # pareto
-            num_c = 0
+        if heterogeneous:
+            cluster_info[0] = '1'
+            for i in range(1, 8):
+                cluster_info[i] = '0'
+            cluster_combinations = [cluster_info]
+            return cluster_combinations
+        else:
             cluster_combinations = []
-            for num_a100 in range(0, 8+1):
-                for num_a10 in range(0, 8+1):
-                    cluster = {}
-                    for i in range(num_a100+num_a10):
-                        cluster[i] = '0'
-                    for i in range(num_a100):
-                        cluster.update({i:'1'})
-                    if len(cluster.keys())>0:
-                        cluster_combinations.append(cluster)
-                    num_c += 1
-            print(f"Number of clusters combinations: {num_c}")
+            for i in range(8):
+                cluster_info[i] = '0'
+            cluster_combinations.append(cluster_info)        
             return cluster_combinations
     else:
         assert False, "Model type not supported"
