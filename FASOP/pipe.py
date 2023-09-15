@@ -163,6 +163,20 @@ def explain_minmax(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst)
     return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
 
 
+def get_max_submodel(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst):
+
+    partition = [14, 5, 5, 5, 5, 5, 5, 6]
+    print(f"partition : {partition}")
+    stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
+    
+    stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
+    stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
+    stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
+    stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
+    stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
+
+    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
+
 def get_stage_latency(partition, cost_e_a100, cost_e_a10, cost_c, gpu_type_lst):
     
     num_bw_share = 1 # which should be caculated in get_cost_c considering PCIe
@@ -269,7 +283,6 @@ def exhaustive_partition(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_typ
     return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
     
         
-
 from itertools import permutations
 def compositions(n, k):
     def inner(n, k):
@@ -287,8 +300,6 @@ def dynamic_programming(L, cost_e_a100, cost_e_a10, cost_c, pp, num_mb, gpu_type
     converted output for FASOP
     """
     time_dp_s = time.time()
-    possible_1 = [0]
-    possible_2 = [0]
 
     if pp==1:
         if gpu_type_list[0]=="A100":
@@ -305,73 +316,145 @@ def dynamic_programming(L, cost_e_a100, cost_e_a10, cost_c, pp, num_mb, gpu_type
 
         return S, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
 
-    else:
-        ptr_lst = []
+    possible = [0]
+    for cost_e in [cost_e_a10, cost_e_a100]:
         for i in range(1, L+1):
             ptr = 0
             while ptr + i <= L:
-                possible_1.append(sum(cost_e_a100[ptr:ptr+i]))
-                possible_2.append(sum(cost_e_a10[ptr:ptr+i]))
+                possible.append(sum(cost_e[ptr:ptr+i]))
                 ptr += 1
-                ptr_lst.append(f"{ptr}:{ptr+i}")
-        
-        possible_1 = sorted(list(set(possible_1)))
-        possible_2 = sorted(list(set(possible_2)))
 
-        trace = []
-        for i in range(L):
-            outer = []
-            for j in range(pp):
-                inner = []
-                for m in range(len(possible_1)):
-                    inner.append(([],np.infty))
-                outer.append(inner)
-            trace.append(outer)
-        
-        for i in range(L): # num layer
-            for j in range(pp):
-                for m in range(len(possible_1)):
-                    if i+1 <= j: # invalid
-                        pass
+    cost_e = [cost_e_a100 if gpu_type_list[i]=="A100" else cost_e_a10 for i in range(pp)]
+
+    possible = sorted(list(set(possible)))
+    trace = []
+    for i in range(L):
+        outer = []
+        for j in range(pp):
+            inner = []
+            for m in range(len(possible)):
+                inner.append(([],np.infty))
+            outer.append(inner)
+        trace.append(outer)
+    
+    for i in range(L):
+        for j in range(pp):
+            for m in range(len(possible)):
+                if i+1 <= j: # invalid
+                    pass
+                else:
+                    if j == 0: # base case: 0 cut
+                        comp_t = sum(cost_e[j][:i+1])
+                        comp_t = max(comp_t, possible[m])
+                        #cost_ = (num_mb-1) * max(0, cur_sum - possible[m])
+                        stage_time = comp_t * (num_mb-1)
+                        trace[i][j][m] = ([i+1], stage_time)
                     else:
-                        if gpu_type_list[j]=='A100':
-                            cost_e = cost_e_a100
-                            possible = possible_1
-                        elif gpu_type_list[j]=='A10':
-                            cost_e = cost_e_a10
-                            possible = possible_2
-                        else:
-                            raise ValueError(f"Unrecognized gpu type: {gpu_type_list[j]}")
-                        if j == 0: # base case: 0 cut
-                            cur_sum = sum(cost_e[:i+1])
-                            trace[i][j][m] = ([i+1], (num_mb-1) * max(0, cur_sum - possible[m]))
-                        else:
-                            cost_best = np.infty
-                            S_best = []
-                            for cut in range(j-1, i):
-                                cur_sum = sum(cost_e[cut+1:i+1])
-                                S, cost_ = trace[cut][j-1][possible.index(max(cur_sum, possible[m]))]
-                                cost_ += (num_mb-1) * max(0, cur_sum - possible[m])
-                                cost_ += cost_c[cut][j-1]
-                                if cost_ < cost_best:
-                                    cost_best = cost_ - cost_c[cut][j-1]
-                                    S_ = copy.deepcopy(S)
-                                    S_.append(i-cut)
-                                    S_best = S_
-                            trace[i][j][m] = (S_best, cost_best)
+                        cost_best = np.infty
+                        S_best = []
+                        for cut in range(j-1, i):
+                            comp_t = sum(cost_e[j][cut+1:i+1])
+                            S, past_stage_time = trace[cut][j-1][possible.index(max(comp_t, possible[m]))]
+                            cur_stage_time = comp_t
+                            cur_stage_time += cost_c[cut][j-1]
+                            if j != pp-1:
+                                cur_stage_time += cost_c[cut][j]
+                            cur_stage_time = cur_stage_time * (num_mb-1)
+                            stage_time = max(cur_stage_time, past_stage_time)
+                            if stage_time < cost_best:
+                                cost_best = stage_time
+                                S_ = copy.deepcopy(S)
+                                S_.append(i-cut)
+                                S_best = S_
+                        trace[i][j][m] = (S_best, cost_best)
                             
-        time_dp_used = time.time() - time_dp_s
-        
-        # add each stage cost at the end 
-        S, cost = trace[L-1][pp-1][0]
-        print(f"dynamic programming used {round(time_dp_used,2)} seconds with {L} layers and {pp} stages.")
-        print(f"S: {S}, cost: {cost}")
-        
-        stage_latency = get_stage_latency(S, cost_e_a100, cost_e_a10, cost_c, gpu_type_list)
-        stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
-        stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
-        stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
-        stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
-        stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
+    time_dp_used = time.time() - time_dp_s
+    
+    # add each stage cost at the end 
+    S, cost = trace[L-1][pp-1][0]
+    print(f"dynamic programming used {round(time_dp_used,2)} seconds with {L} layers and {pp} stages.")
+    print(f"S: {S}, cost: {cost}")
+    
+    stage_latency = get_stage_latency(S, cost_e_a100, cost_e_a10, cost_c, gpu_type_list)
+    stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
+    stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
+    stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
+    stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
+    stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
 
-        return S, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
+    return S, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst
+
+
+
+def ILP(num_layer, cost_e1, cost_e2, cost_c, pp_degree, gpu_type_lst, num_mb):
+    s_time = time.time()
+    import docplex.mp
+
+    from docplex.mp.model import Model
+    
+    # get cplex solver
+    m = Model(name='partitioning')
+    
+    # create variables (#layers for each stage)
+    layers_per_stage = []
+    for i in range(pp_degree):
+        layers_per_stage.append(m.integer_var(name=f'stage_{i}'))
+    
+    # add constraints
+    m.add_constraint(m.sum(layers_per_stage) == num_layer-2)
+
+    # make a list of cost_e, which is a list of cost_e1 or cost_e2 for each stage
+    cost_e =[]
+    for i in range(pp_degree):
+        if gpu_type_lst[i] == 'A100':
+            cost_e.append(cost_e1)
+        elif gpu_type_lst[i] == 'A10':
+            cost_e.append(cost_e2)
+        else:
+            assert False, "gpu type is not recognized"
+
+    # calculate embedding and communication time for each stage, which is a constant
+    embedding_and_comm_time = []
+    for i in range(pp_degree):
+        if i == 0:
+            embedding_and_comm_time.append(cost_e[i][0])
+        elif i == pp_degree-1:
+            embedding_and_comm_time.append(cost_e[i][-1])
+        else:
+            embedding_and_comm_time.append(0)
+        embedding_and_comm_time[i] += cost_c[0][i] # 0 because comm volume is always same for Transformers. TODO: change this for other models
+        if i != 0 and i != pp_degree-1:
+            embedding_and_comm_time[i] += cost_c[0][i-1]
+
+    # m.minimize(m.max(layers_per_stage[i]*cost_e[i][1]+embedding_and_comm_time[i] for i in range(pp_degree)))
+    # If you'd like to minimize pipeline latency not the max latency, use the following line instead of the above line.
+    m.minimize((num_mb-1)*m.max(layers_per_stage[i]*cost_e[i][1]+embedding_and_comm_time[i] \
+                for i in range(pp_degree)) + \
+                m.sum(layers_per_stage[i]*cost_e[i][1]+embedding_and_comm_time[i] \
+                for i in range(pp_degree)))
+    m.print_information()
+    
+    while m.solve():
+        s = m.solution
+        partition = []
+        for i in range(pp_degree):
+            partition.append(int(s.get_value(layers_per_stage[i])))
+            if i == 0 or i == pp_degree-1:
+                partition[i] += 1
+        print(f" solution: {partition}")
+        m.add_constraint(m.max(layers_per_stage[i]*cost_e[i][1]+embedding_and_comm_time[i] for i in range(pp_degree)) \
+                        <= 0.99 * m.max(int(s.get_value(layers_per_stage[i]))*cost_e[i][1]+embedding_and_comm_time[i] for i in range(pp_degree)))
+        # m.add_constraint(m.sum(layers_per_stage[i]*cost_e[i][1]+embedding_and_comm_time[i] for i in range(pp_degree)) \
+        #                 <= 0.99 * m.sum(int(s.get_value(layers_per_stage[i]))*cost_e[i][1]+embedding_and_comm_time[i] for i in range(pp_degree)))
+
+    print(f"ILP: {time.time()-s_time:.4f} sec")
+
+    stage_latency = get_stage_latency(partition, cost_e1, cost_e2, cost_c, gpu_type_lst)
+    
+    stage_time_lst = [stage.get_stage_time() for stage in stage_latency]
+    stage_comp_time_lst = [stage.get_comp_time() for stage in stage_latency]
+    stage_comm_time_lst = [stage.get_comm_time() for stage in stage_latency]
+    stage_for_send_time_lst = [stage.get_for_send_time() for stage in stage_latency]
+    stage_back_send_time_lst = [stage.get_back_send_time() for stage in stage_latency]
+
+    return partition, stage_comp_time_lst, stage_comm_time_lst, stage_time_lst, stage_for_send_time_lst, stage_back_send_time_lst

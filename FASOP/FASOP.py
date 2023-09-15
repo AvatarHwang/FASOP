@@ -29,7 +29,7 @@ parser.add_argument("--heterogeneous", action='store_true', help="True if you wa
 parser.add_argument("--type", type=str, default="gpt2XL")
 parser.add_argument("--gpu_per_node", type=int, default=4)
 parser.add_argument("--precision", type=int, default=16)
-parser.add_argument("--iter", type=int, default=12_500_000, help="number of iterations for each experiment (default: 1)")
+parser.add_argument("--iter", type=int, default=12_500_000, help="number of iterations for each experiment (default: 12.5m)")
 parser.add_argument("--pareto", action='store_true', help="True if you want to run pareto experiments (default: False)")
 parser.add_argument("--add_exp_name", type=str, default="")
 parser.add_argument("--exhaustive", action='store_true', help="True if you want to run exhaustive search for model partitioning (default: False)")
