@@ -43,10 +43,10 @@ To prepare the necessary dependencies for FASOP, follow these steps:
     $ conda activate fasop
     ```
     
-- Install the `numpy` package:
+- Install the `numpy, pandas` package:
 
     ```
-    $ conda install numpy
+    $ conda install numpy pandas
     ```
     
 - Install PyTorch 2.0
