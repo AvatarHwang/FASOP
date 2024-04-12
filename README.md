@@ -1,4 +1,4 @@
-# FASOP: Fast yet Accurate Automatic Search for Optimal Parallelization of a Transformer on Heterogeneous GPU Clusters
+# FASOP: Fast yet Accurate Automated Search for Optimal Parallelization of Transformers on Heterogeneous GPU Clusters
 
 This repository contains FASOP, a framework that automates the process of finding the optimal degrees of parallelism and model partitioning for Transformer-based models on heterogeneous GPU clusters. FASOP accurately estimates pipelining latency and GPU communications, enabling it to find configurations that minimize the cost of GPU clusters while satisfying training time constraints, or configurations that minimize training time while meeting cost constraints. FASOP supports a variety of Transformer-based models and uses advanced algorithms and techniques to rapidly and accurately estimate device configurations.
 
@@ -11,9 +11,9 @@ This repository includes the FASOP framework, which can be used for the followin
 (1) Finding Optimal Parallel Strategy for GPT on Heterogeneous GPU Clusters.
 (2) Launching practical distributed learning using Megatron-LM based on the results from FASOP.
 
-## Reproducing the Experiments from [FASOP: Fast yet Accurate Automatic Search for Optimal Parallelization of a Transformer on Heterogeneous GPU Clusters]
+## Reproducing the Experiments from [FASOP: Fast yet Accurate Automated Search for Optimal Parallelization of Transformers on Heterogeneous GPU Clusters]
 
-To reproduce the experiments from [FASOP: Fast yet Accurate Automatic Search for Optimal Parallelization of a Transformer on Heterogeneous GPU Clusters], follow these steps:
+To reproduce the experiments from [FASOP: Fast yet Accurate Automated Search for Optimal Parallelization of Transformers on Heterogeneous GPU Clusters], follow these steps:
 
 ### I. Install the necessary dependencies for FASOP. 
 
@@ -43,10 +43,10 @@ To prepare the necessary dependencies for FASOP, follow these steps:
     $ conda activate fasop
     ```
     
-- Install the `numpy` package:
+- Install the `numpy, pandas` package:
 
     ```
-    $ conda install numpy
+    $ conda install numpy pandas
     ```
     
 - Install PyTorch 2.0
@@ -60,20 +60,20 @@ To prepare the necessary dependencies for FASOP, follow these steps:
 To inspect the parallel strategies used, execute FASOP.py with the --type argument set to the desired model (bert, gpt2XL, or T5) and the --heterogeneous flag.
 
 Example command for BERT:
-    ```bash
+    
     
     $ python FASOP.py --type bert --heterogeneous
     
-    ```
+    
 
 Reproducing the Experiment
 The experiment can be reproduced by adding the --pareto flag. Here is an example using the gpt2XL model:
 
-    ```bash
+    
     
     $ python FASOP.py --heterogeneous --pareto
     
-    ```
+    
     
 ### III. Report    
 
@@ -81,7 +81,7 @@ FASOP will generate a summary of the optimal parallel strategy for the chosen mo
 
 The directory structure of the output folder is as follows:
 
-- output directory location: `~/FASOP/main_logs`
+- output directory location: `~/FASOP/main_logs/`
 
     ```bash
     main_logs
