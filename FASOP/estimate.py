@@ -358,7 +358,7 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
 
     counted = False
     # debug
-    print(f"tp: {mp.item()}, dp: {dp.item()}, pp: {pp.item()}")
+    # print(f"tp: {mp.item()}, dp: {dp.item()}, pp: {pp.item()}")
     
     param_count = 0    
     for layer_id in range(ds_partition[0], ds_partition[1]):
@@ -370,7 +370,7 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         elif layer_type == "transformer_layer" or layer_type == "encoder" or layer_type == "decoder":
             param_count += ((12 * h ** 2)+20800) / mp
     
-    print(f" param_count: {param_count}")
+    # print(f" param_count: {param_count}")
     
     # Get communication bandwidth of pipeline stage 0
     dp_cost_list = []
@@ -404,8 +404,8 @@ def dp_cost(config, cluster_info, model_config, parallel_config, amp_config, par
         precision = 16 #TODO: precision should be args.precision
         dp_cost_list.append(2 * (int(dp.item()) - 1) * (param_count * precision) / (int(dp.item()) * bandwidth))
     
-    print(f"bandwidth: {bandwidth}")
-    print(f"dp_cost_list: {dp_cost_list}")
+    # print(f"bandwidth: {bandwidth}")
+    # print(f"dp_cost_list: {dp_cost_list}")
         
     return ds_partition, dp_cost_list
 
