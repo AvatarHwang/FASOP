@@ -60,20 +60,20 @@ To prepare the necessary dependencies for FASOP, follow these steps:
 To inspect the parallel strategies used, execute FASOP.py with the --type argument set to the desired model (bert, gpt2XL, or T5) and the --heterogeneous flag.
 
 Example command for BERT:
-    ```bash
+    
     
     $ python FASOP.py --type bert --heterogeneous
     
-    ```
+    
 
 Reproducing the Experiment
 The experiment can be reproduced by adding the --pareto flag. Here is an example using the gpt2XL model:
 
-    ```bash
+    
     
     $ python FASOP.py --heterogeneous --pareto
     
-    ```
+    
     
 ### III. Report    
 
@@ -81,7 +81,7 @@ FASOP will generate a summary of the optimal parallel strategy for the chosen mo
 
 The directory structure of the output folder is as follows:
 
-- output directory location: `~/FASOP/main_logs`
+- output directory location: `~/FASOP/main_logs/`
 
     ```bash
     main_logs
