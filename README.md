@@ -95,14 +95,13 @@ The directory structure of the output folder is as follows:
     ```    
     
 - The results file will contain the following fields, separated by ('\*'):
-`rank`, `mbs`, `tp degree`, `dp degree`, `pp degree`, `node_info`, `partition`, `estimated_time`, `pipeline time`, `time of DP`, `time of reducing embedding layers`, `$/step`.
+`mbs`, `tp`, `dp`, `pp`, `node placement`, `num_a100`, `num_a10`, `partition`, `estimated time (s/step)`, `pipeline time`, `DP all-reduce time`, `embedding layer all-reduce time`, `is_oom`, `oom_gpumem`, `is_fsdp_oom`, `fsdpoom_gpumem`, `train_cost`.
 
-- example for the result of `FASOP_1.5b.py` located as `~/FASOP/main_logs/gpt1.5b.txt`
+- example for the result of `FASOP.py --type bert` located as `~/FASOP/main_logs/bert.csv`. this is sorted by steptime in ascending order.
     ```bash
-    rank 0: (1, '*', {'tp_deg': 1, 'dp_deg': 4, 'pp_deg': 16}, '*', ['p4d.24xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge'], '*', [6, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3], '*', 0.982886552810669, '*', 0.8530580251371566, '*', 0.0011705760844051838, '*', tensor([0.1287]), '*', 0.0321765932649374)
-    rank 1: (1, '*', {'tp_deg': 2, 'dp_deg': 2, 'pp_deg': 16}, '*', ['p4d.24xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge'], '*', [5, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3], '*', 1.059550404548645, '*', 1.026912873923363, '*', 0.00047297601122409105, '*', tensor([0.0322]), '*', 0.0346863250019749)
-    rank 2: (1, '*', {'tp_deg': 1, 'dp_deg': 8, 'pp_deg': 8}, '*', ['p4d.24xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge'], '*', [8, 7, 6, 6, 6, 6, 6, 5], '*', 1.149800419807434, '*', 0.8142246340005697, '*', 0.20691776275634766, '*', tensor([0.1287]), '*', 0.03764082470983267)
-    rank 3: (1, '*', {'tp_deg': 2, 'dp_deg': 4, 'pp_deg': 8}, '*', ['p4d.24xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge', 'g5.12xlarge'], '*', [7, 7, 6, 6, 6, 6, 6, 6], '*', 1.2146559953689575, '*', 0.943166779941091, '*', 0.2071603238582611, '*', tensor([0.0643]), '*', 0.03976399087772767)
+    4,1,16,1.0,"['g5.24xlarge', 'g5.24xlarge', 'g5.24xlarge', 'g5.24xlarge']",[26],0.95458984375,0.7042821049690247,0.25030770897865295,0.0,0.006016037326388889,False,tensor([9.0552]),False,tensor([5.3309])
+    8,1,16,1.0,"['g5.24xlarge', 'g5.24xlarge', 'g5.24xlarge', 'g5.24xlarge']",[26],0.95458984375,0.7042821049690247,0.25030770897865295,0.0,0.006016037326388889,False,tensor([12.5239]),False,tensor([8.7996])
+    16,1,16,1.0,"['g5.24xlarge', 'g5.24xlarge', 'g5.24xlarge', 'g5.24xlarge']",[26],0.95458984375,0.7042821049690247,0.25030770897865295,0.0,0.006016037326388889,False,tensor([19.4614]),False,tensor([15.7371])
     ...
     ```
 
@@ -128,7 +127,7 @@ To prepare the Wikipedia training dataset, follow these steps:
 
 ### III. Setup Model Configuration
 
-In the `_00_conf.sh` file, you can adjust the model by modifying the `MODEL_ARGS` value. It's important to note that the `gpt2`, `Bert`, and `T5` models have different `--num-layers`, `--hidden-size`, etc., so you need to carefully set these parameters accordingly.
+In the `_00_conf.sh` file, you can adjust the model by modifying the `MODEL_ARGS` value. It's important to note that the `gpt2xl`, `Bert`, and `T5` models have different `--num-layers`, `--hidden-size`, etc., so you need to carefully set these parameters accordingly.
 
 ### IV. Running the modified Megatron-LM Code
 
@@ -176,19 +175,19 @@ $ cd ~
 $ cd FASOP/Megatron-LM-2
 ```
 
-- Edit the `hetero-conf.sh`file to adjust the desired training configurations.
+- Edit the `_00_conf.sh` file to adjust the desired training configurations.
 
 ```
 
-$ vim ./hetero-conf.sh
+$ vim ./_00_conf.sh
 
 ```
 
-- Run the `submit-hetero.sh` script to start the master and slave jobs:
+- Run the `_03_summit.sh` script to start the master `_02_hetero_master_job.sh` and slave `_02_hetero_slave_job.sh` jobs:
 
 ```
 
-$ ./submit-hetero.sh
+$ ./_03_summit.sh
 
 ```
 
