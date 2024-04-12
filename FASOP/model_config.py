@@ -44,6 +44,6 @@ def get_model_config(model_type:str, precision:int, heterogeneous:bool=True, par
     if heterogeneous==True:
         exp_name = exp_name + "_heterogeneous"
     if pareto==True:
-        exp_name = exp_name + "_pareto_device_placement"
+        exp_name = exp_name + "_pareto"
 
     return model_config, gbs, exp_name

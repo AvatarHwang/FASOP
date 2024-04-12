@@ -152,7 +152,7 @@ print(f"Finished {time.time() - time_s}")
 
 sorted_settings = sorted(want_simulate, key = lambda kv: kv[8])
 
-df = pd.DataFrame(sorted_settings, columns = ['mbs','tp','dp','pp','node placement', 'n_a100', 'num_a10', 'partition','estimated time (s/step)','pipeline time','DP all-reduce time','embedding layer all-reduce time','price_per_step','is_oom','oom_gpumem','is_zero_oom','zerooom_gpumem', 'train_cost'])
+df = pd.DataFrame(sorted_settings, columns = ['mbs','tp','dp','pp','node placement', 'num_a100', 'num_a10', 'partition','estimated time (s/step)','pipeline time','DP all-reduce time','embedding layer all-reduce time','price_per_step','is_oom','oom_gpumem','is_fsdp_oom','fsdpoom_gpumem', 'train_cost'])
 
 # first remove existing csv file
 if os.path.exists(f"{os.path.join(dir_path, exp_name)}.csv"):
