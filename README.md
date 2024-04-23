@@ -116,7 +116,7 @@ Our experiements were run using the following environment:
 
 - slurm version: 20.11.4
 - enroot version: 3.4.0
-- container image: `nvcr.io/nvidia/pytorch:23.04-py3`
+- container image: `nvcr.io/nvidia/pytorch:23.04-py3` see [ngc catalog](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/pytorch)
 
 However, it is also possible to run the experiments without Slurm and Enroot using Docker.
 
