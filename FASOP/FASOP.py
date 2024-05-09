@@ -53,7 +53,8 @@ time_s = time.time()
 gpu_per_node = args.gpu_per_node
 
 home_path = os.environ['HOME']
-dir_path = os.path.join(home_path, 'tdpp/FASOP/main_logs')
+pwd_path = os.environ['PWD']
+dir_path = os.path.join(pwd_path, './main_logs')
 if not os.path.exists(dir_path):
     os.mkdir(dir_path)
 
