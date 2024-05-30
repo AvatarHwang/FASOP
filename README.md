@@ -217,7 +217,6 @@ To use FASOP in your publication, please cite it by using the following BibTeX e
   title = {FASOP: Fast yet Accurate Automated Search for Optimal Parallelization of Transformers on Heterogeneous GPU Clusters},
   publisher = {Association for Computing Machinery},
   author = {Soonyeol Hwang, Eunkyung Lee, Hongseok Oh, Youngmin Yi},
-  howpublished = {\url{https://github.com/huggingface/peft}},
   year = {2024},
   series = {HPDC '24}
 }
