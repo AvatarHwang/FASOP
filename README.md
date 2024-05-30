@@ -209,3 +209,16 @@ $ ./_03_summit.sh
   howpublished = {\url{https://github.com/attardi/wikiextractor}}
 }
 
+## Citing FASOP
+To use FASOP in your publication, please cite it by using the following BibTeX entry.
+
+```bibtex
+@inproceedings{FASOP,
+  title = {FASOP: Fast yet Accurate Automated Search for Optimal Parallelization of Transformers on Heterogeneous GPU Clusters},
+  publisher = {Association for Computing Machinery},
+  author = {Soonyeol Hwang, Eunkyung Lee, Hongseok Oh, Youngmin Yi},
+  howpublished = {\url{https://github.com/huggingface/peft}},
+  year = {2024},
+  series = {HPDC '24}
+}
+```
