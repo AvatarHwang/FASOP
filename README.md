@@ -2,6 +2,8 @@
 
 This repository contains FASOP, a framework that automates the process of finding the optimal degrees of parallelism and model partitioning for Transformer-based models on heterogeneous GPU clusters. FASOP accurately estimates pipelining latency and GPU communications, enabling it to find configurations that minimize the cost of GPU clusters while satisfying training time constraints, or configurations that minimize training time while meeting cost constraints. FASOP supports a variety of Transformer-based models and uses advanced algorithms and techniques to rapidly and accurately estimate device configurations.
 
+🎉Our work was accepted and presented at [HPDC 2024](https://www.hpdc.org/2024/program.html#day4)
+
 -----
 
 # Usage
