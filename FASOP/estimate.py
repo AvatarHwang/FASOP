@@ -592,7 +592,12 @@ def predict(config, gbs, mbs, cluster_info, model_config, amp_config, oth, node_
     max_latency_index = end2end_stage_latency.index(max_latency)
     
     dp_side_cost_last = dp_cost_list[max_latency_index]
-
+    if exhaustive["exhaustive"] is True:
+        print(f"partition: {partition}")
+        print(f"estimated time / pp latency / dp cost / allreduce embedding")
+        print(f"{cost_last.item():.4f}, {pipecost_last.item():.4f}, {dp_side_cost_last.item():.4f}, {all_reduce_embedding_cost:.4f}")
+        assert False, "Done!"
+    
     return rank_map, partition, cost_last, pipecost_last, dp_side_cost_last, all_reduce_embedding_cost, is_oom, oom_gpumem, is_zero_oom, zerooom_gpumem
     
 
